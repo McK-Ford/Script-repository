@@ -179,6 +179,13 @@ pI <- function(bed, bam, pairedEnd, pause_s, pause_e){
                               revcomp=TRUE, pairedEnd = pairedEnd, rnorm=FALSE, ignorestrand=FALSE)
   joined_tab = cbind(bed, pause_bed[,2:3], pause_tab[[ncol(pause_tab)]], body_tab[[ncol(body_tab)]])
   colnames(joined_tab) = c(colnames(bed), "pause_start", "pause_end", "pause_counts", "body_counts")
+  bam_info = if(pairedEnd) BamFile(bam,asMates=TRUE) else BamFile(bam)
+  #normalizing factor
+  rcm=readcounts(bam_info, pairedEnd, debug=FALSE)/1e6
+  tot_counts = joined_tab$pause_counts + joined_tab$body_counts
+  gene_lens = joined_tab[[3]]-joined_tab[[2]]
+  joined_tab$total_norm = (tot_counts/gene_lens)/rcm
+  #pI_calc
   joined_tab$lengthnorm_pause = joined_tab$pause_counts / (joined_tab$pause_end - joined_tab$pause_start)
   joined_tab$lengthnorm_body = joined_tab$body_counts / (joined_tab[[3]]-joined_tab[[2]]-pause_e)
   joined_tab$pI = joined_tab$lengthnorm_pause/joined_tab$lengthnorm_body
