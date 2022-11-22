@@ -183,7 +183,7 @@ pI <- function(bed, bam, pairedEnd, pause_s, pause_e){
   #normalizing factor
   rcm=readcounts(bam_info, pairedEnd, debug=FALSE)/1e6
   tot_counts = joined_tab$pause_counts + joined_tab$body_counts
-  gene_lens = joined_tab[[3]]-joined_tab[[2]]
+  gene_lens = (joined_tab[[3]]-joined_tab[[2]])/1e3
   joined_tab$total_norm = (tot_counts/gene_lens)/rcm
   #pI_calc
   joined_tab$lengthnorm_pause = joined_tab$pause_counts / (joined_tab$pause_end - joined_tab$pause_start)
