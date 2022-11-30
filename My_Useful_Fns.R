@@ -158,7 +158,7 @@ bi_anch_mat <- function(bed_sub, n){
   return(mat_list)
   }
 
-pI <- function(bed, bam, pairedEnd, pause_s, pause_e){
+pI <- function(bed, bam, pairedEnd, pause_s, pause_e, body_s=pause_e){
   #Args: bed is table with 1st 6 cols in bed format, bam is string to bam filepath,
   #pairedEnd is bool, pause_s and pause_e are integer positions indicating bp relative
   #to TSS. gene_body implicitly defined as pause_e through gene_end.
@@ -170,8 +170,8 @@ pI <- function(bed, bam, pairedEnd, pause_s, pause_e){
   pause_bed[pause_bed[[6]] == "-",][3] =  pause_bed[pause_bed[[6]] == "-",][3] - pause_s
   pause_bed[pause_bed[[6]] == "+",][3] =  pause_bed[pause_bed[[6]] == "+",][2] + pause_e
   pause_bed[pause_bed[[6]] == "-",][2] =  pause_bed[pause_bed[[6]] == "-",][3] - pause_e
-  body_bed[body_bed[[6]] == "+",][2] =  body_bed[body_bed[[6]] == "+",][2] + pause_e
-  body_bed[body_bed[[6]] == "-",][3] =  body_bed[body_bed[[6]] == "-",][3] - pause_e
+  body_bed[body_bed[[6]] == "+",][2] =  body_bed[body_bed[[6]] == "+",][2] + body_s
+  body_bed[body_bed[[6]] == "-",][3] =  body_bed[body_bed[[6]] == "-",][3] - body_s
   pause_tab = score_matrix(bed=pause_bed, bam=bam, n=1,
                                method="bi_anch", mode="sbp",
                                revcomp=TRUE, pairedEnd = pairedEnd, rnorm=FALSE, ignorestrand=FALSE)
@@ -215,7 +215,7 @@ order_bed_by_chrom <- function(bed){
 
 list_chrs <- function(){
   chrs = as.list(paste0("chr", rep(1:22)))
-  append(chrs, "chrX")
+  chrs = append(chrs, "chrX")
   return(chrs)
 }
 
