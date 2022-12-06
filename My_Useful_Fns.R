@@ -41,7 +41,8 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
   }
  # chrs = list("chr14", "chr19")
   print(paste0("method is ", method, " and mode is ", mode))
-  tmp_list=list()
+  tmp_list=list=chrs
+  tmp_ref_list=chrs
   for (i in seq_along(chrs)) {
     print(paste0("getting regions for chrom ", chrs[[i]], " at ", Sys.time()))
     bed_sub = bed %>% filter(bed[[1]]==chrs[[i]])
@@ -49,7 +50,7 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
       hist = center_mat(bed_sub=bed_sub, a=a, b=b, bs=bs)
       } else if (method=="single_anch") {
         hist = single_anch_mat(bed_sub=bed_sub, a=a, b=b, bs=bs)
-        strandvec = rep(bed_sub[[6]], each=(b-a)/bs)
+        strandvec = rep(bed_sub[[6]], each=(a-b)/bs)
       } else {
         mat_list = bi_anch_mat(bed_sub = bed_sub, n=n)
         hist = mat_list[[1]]
@@ -89,7 +90,7 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
       olap = countOverlaps(test, bam_aln, ignore.strand=ignorestrand) 
       } else {
         olap = countOverlaps(GRanges( seqnames = chrs[[i]], ranges = IRanges(
-        start = long_hist[[3]], end = long_hist[[3]]+ bs), strand=strand), bam_aln, ignore.strand=ignorestrand)
+        start = long_hist[[3]], end = long_hist[[3]]+ bs), strand=strandvec), bam_aln, ignore.strand=ignorestrand)
         }
     if (debug) print(head(olap))
     long_hist$value=olap
@@ -102,11 +103,13 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
       if (debug) print("flipped - hist")
     }
     if (debug) print(head(hist))
-    tmp_list[[i]] = cbind(bed_sub, hist)
+    tmp_list[[i]] = hist
+    tmp_ref_list[[i]] = bed_sub
   }
   hist = do.call(rbind, tmp_list) #collapse into one matrix
-  hist = if(rnorm) hist * 1e6 / read_counts else hist
-  hist=as.data.table(hist)
+  hist = if(rnorm) hist * 1e6 / readcounts else hist
+  bed=do.call(rbind,tmp_ref_list)
+  hist=cbind(as.data.table(bed), as.data.table(hist))
   return(hist)
 }
 # Common error message if you see the error "aggregation function missing, defaulting to length" this
@@ -158,10 +161,10 @@ bi_anch_mat <- function(bed_sub, n){
   return(mat_list)
   }
 
-pI <- function(bed, bam, pairedEnd, pause_s, pause_e, body_s=pause_e){
+pI <- function(bed, bam, pairedEnd, pause_s, pause_e, body_s=pause_e, mode="sbp"){
   #Args: bed is table with 1st 6 cols in bed format, bam is string to bam filepath,
   #pairedEnd is bool, pause_s and pause_e are integer positions indicating bp relative
-  #to TSS. gene_body implicitly defined as pause_e through gene_end.
+  #to TSS. gene_body implicitly defined as pause_e through gene_end. Switch mode to fullread for groseq.
   bed = bed[(bed[[3]] - bed[[2]])>=(pause_e),]
   bed = order_bed_by_chrom(bed)
   pause_bed = bed
@@ -173,9 +176,9 @@ pI <- function(bed, bam, pairedEnd, pause_s, pause_e, body_s=pause_e){
   body_bed[body_bed[[6]] == "+",][2] =  body_bed[body_bed[[6]] == "+",][2] + body_s
   body_bed[body_bed[[6]] == "-",][3] =  body_bed[body_bed[[6]] == "-",][3] - body_s
   pause_tab = score_matrix(bed=pause_bed, bam=bam, n=1,
-                               method="bi_anch", mode="sbp",
+                               method="bi_anch", mode=mode,
                                revcomp=TRUE, pairedEnd = pairedEnd, rnorm=FALSE, ignorestrand=FALSE)
-  body_tab = score_matrix(bed=body_bed, bam=bam, n=1, method="bi_anch", mode= "sbp",
+  body_tab = score_matrix(bed=body_bed, bam=bam, n=1, method="bi_anch", mode=mode,
                               revcomp=TRUE, pairedEnd = pairedEnd, rnorm=FALSE, ignorestrand=FALSE)
   joined_tab = cbind(bed, pause_bed[,2:3], pause_tab[[ncol(pause_tab)]], body_tab[[ncol(body_tab)]])
   colnames(joined_tab) = c(colnames(bed), "pause_start", "pause_end", "pause_counts", "body_counts")
