@@ -29,6 +29,17 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
                              pairedEnd, mode, revcomp=FALSE,
                              readsOnly=FALSE, debug=FALSE, ignorestrand=FALSE,
                              rnorm=TRUE){
+  print(paste0("bam is located at ", bam))
+  print(paste0("method is ", method, " and mode is ", mode))
+  print(paste0("library is pairedEnd: ", pairedEnd))
+  print(paste0("Reverse read strands: ", revcomp))
+  print(paste0("Using only reads in PE mode (vs including insert): ", readsOnly))
+  print(paste0("Ignore strands?: ", ignorestrand))
+  print(paste0("Normalize?: ", rnorm))
+  print(paste0("If scaled, we are using: ", n,
+               " bins, and if anchored method, we are looking ", b,
+               " bp upstream and ", a, " bp downstream of the anchor, using ",
+               bs, " bp bins."))
   #getting bam file info
   bam_info = if(pairedEnd) BamFile(bam,asMates=TRUE) else BamFile(bam)
   si=seqinfo(bam_info)
@@ -40,7 +51,6 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
     print("Running in debug mode")
   }
  # chrs = list("chr14", "chr19")
-  print(paste0("method is ", method, " and mode is ", mode))
   tmp_list=chrs
   tmp_ref_list=chrs
   for (i in seq_along(chrs)) {
@@ -50,7 +60,7 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
       hist = center_mat(bed_sub=bed_sub, a=a, b=b, bs=bs)
       } else if (method=="single_anch") {
         hist = single_anch_mat(bed_sub=bed_sub, a=a, b=b, bs=bs)
-        strandvec = rep(bed_sub[[6]], each=(a-b)/bs)
+        strandvec = rep(bed_sub[[6]], times=(a-b)/bs)
       } else {
         mat_list = bi_anch_mat(bed_sub = bed_sub, n=n)
         hist = mat_list[[1]]
@@ -58,6 +68,7 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
         strandvec = rep(bed_sub[[6]], times=n)
         }
     if (debug) print(head(hist))
+    if (debug) print(tail(hist))
     long_hist=reshape2::melt(hist, na.rm=TRUE) #longform lets us generate 'all
     #bin starts' and 'all bin ends' vectors for scoring.
     sbp = ScanBamParam(
@@ -90,11 +101,11 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
       olap = countOverlaps(test, bam_aln, ignore.strand=ignorestrand) 
       } else {
         test=GRanges( seqnames = chrs[[i]], ranges = IRanges(
-          start = long_hist[[3]], end = long_hist[[3]]+ bs))
-        strand(test)=strandvec
+          start = long_hist[[3]], end = long_hist[[3]]+ bs), strand=strandvec)
         olap = countOverlaps(test, bam_aln, ignore.strand=ignorestrand)
         }
     if (debug) print(head(olap))
+    if (debug) print(tail(olap))
     long_hist$value=olap
     hist=acast(long_hist, Var1~Var2) #get the hist back into wideform.
     if (method=="bi_anch" & "-" %in% bed_sub[[6]]) { #flip the - strand scaled stuff
@@ -105,6 +116,7 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
       if (debug) print("flipped - hist")
     }
     if (debug) print(head(hist))
+    if (debug) print(tail(hist))
     tmp_list[[i]] = hist
     tmp_ref_list[[i]] = bed_sub
   }
