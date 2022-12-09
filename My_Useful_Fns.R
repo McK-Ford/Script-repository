@@ -41,7 +41,7 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
   }
  # chrs = list("chr14", "chr19")
   print(paste0("method is ", method, " and mode is ", mode))
-  tmp_list=list=chrs
+  tmp_list=chrs
   tmp_ref_list=chrs
   for (i in seq_along(chrs)) {
     print(paste0("getting regions for chrom ", chrs[[i]], " at ", Sys.time()))
@@ -55,7 +55,7 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
         mat_list = bi_anch_mat(bed_sub = bed_sub, n=n)
         hist = mat_list[[1]]
         ends_mat = mat_list[[2]]
-        strandvec = rep(bed_sub[[6]], each=n)
+        strandvec = rep(bed_sub[[6]], times=n)
         }
     if (debug) print(head(hist))
     long_hist=reshape2::melt(hist, na.rm=TRUE) #longform lets us generate 'all
@@ -89,8 +89,10 @@ score_matrix <- function(bed, bam, b=NA, a=NA, n=NA, method, bs=10,
         start=long_hist[[3]], end=long_ends[[3]]), strand=strandvec) 
       olap = countOverlaps(test, bam_aln, ignore.strand=ignorestrand) 
       } else {
-        olap = countOverlaps(GRanges( seqnames = chrs[[i]], ranges = IRanges(
-        start = long_hist[[3]], end = long_hist[[3]]+ bs), strand=strandvec), bam_aln, ignore.strand=ignorestrand)
+        test=GRanges( seqnames = chrs[[i]], ranges = IRanges(
+          start = long_hist[[3]], end = long_hist[[3]]+ bs))
+        strand(test)=strandvec
+        olap = countOverlaps(test, bam_aln, ignore.strand=ignorestrand)
         }
     if (debug) print(head(olap))
     long_hist$value=olap
@@ -130,8 +132,8 @@ single_anch_mat <- function(bed_sub, a, b, bs){
   ref_point = ifelse(bed_sub[[6]]=="+", bed_sub[[2]], bed_sub[[3]])
   hist_rows=bed_sub[[4]]
   bins = ifelse(
-    bed_sub[6]=="+", list(seq(from=b, to=(a-bs), by=bs)),
-    list(seq(from=a, to=(b+bs), by=-bs)))
+    bed_sub[[6]]=="+", list(seq(from=b, to=(a-bs), by=bs)),
+    list(seq(from=(-b-bs), to=(-a), by=-bs)))
   hist=round(do.call(rbind, bins)) #collapse bins vector into matrix
   bin_names = seq(from=b,to=a-bs,by=bs)
   hist=hist+ref_point
