@@ -1,0 +1,76 @@
+---
+title: "prepping project cell lines for heatmap"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+```
+
+
+```{r}
+dir = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/project_cell_lines_pI_for_laura/H4K20me3 Peaks/"
+MCF7_H4K20me3   = read.delim(paste0(dir, "MCF7.H4K20me3.abcam.bed"),
+                            header=FALSE,
+                            stringsAsFactors = FALSE)
+MCF10A_H4K20me3 = read.delim(paste0(dir,"MCF10A.H4K20me3.abcam.bed"),
+                              header=FALSE,
+                              stringsAsFactors = FALSE)
+MB231_H4K20me3  = read.delim(paste0(dir,"MDA-MB-231_50Kcells.H4K20me3.abcam.bed"),
+                              header=FALSE,
+                              stringsAsFactors = FALSE)
+SUM159_H4K20me3 = read.delim(paste0(dir,"SUM159PT_NoDendra.H4K20me3.abcam.bed"),
+                              header=FALSE,
+                              stringsAsFactors = FALSE)
+T47D_H4K20me3   = read.delim(paste0(dir,"T47D.H4K20me3.abcam.bed"),
+                              header=FALSE,
+                              stringsAsFactors = FALSE)
+```
+
+These were copied to this location in my folder from Genomic Sandbox/project_cell_lines/CnT/H4K20me3/peaks/peaks.SEACR_rmblacklist
+on 12/6/2022.
+```{r}
+cn = c("chrom", "start", "end", "tot_sig", "max_sig", "max_reg")
+colnames(MCF10A_H4K20me3) = cn
+colnames(MCF7_H4K20me3)   = cn
+colnames(MB231_H4K20me3)  = cn
+colnames(SUM159_H4K20me3) = cn
+colnames(T47D_H4K20me3)   = cn
+```
+
+Those aren't actually annotated, why would I use them?? Would require intersecting and all that, after all. Might add that in later but will def take longer.
+```{r}
+pI_tab <- read.delim("C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V3/project_cell_lines_pI.txt")
+setDT(pI_tab)
+```
+
+```{r}
+T47D_ordered <- pI_tab
+setorder(T47D_ordered, cols = - "pI.T47D", na.last=TRUE)
+```
+
+```{r}
+MCF10A_ordered <- pI_tab
+setorder(MCF10A_ordered, cols = - "pI.MCF10A", na.last=TRUE)
+MCF7_ordered <- pI_tab
+setorder(MCF7_ordered, cols = - "pI.MCF7", na.last=TRUE)
+MB231_ordered <- pI_tab
+setorder(MB231_ordered, cols = - "pI.MB231", na.last=TRUE)
+SUM159_ordered <- pI_tab
+setorder(SUM159_ordered, cols = - "pI.SUM159", na.last=TRUE)
+```
+
+```{r}
+write.table(T47D_ordered[,1:6], file="genes_ranked_by_T47D_pI.bed", quote=FALSE,
+            sep="\t", row.names = FALSE, col.names = FALSE)
+write.table(MCF7_ordered[,1:6], file="genes_ranked_by_MCF7_pI.bed", quote=FALSE,
+            sep="\t", row.names = FALSE, col.names = FALSE)
+write.table(MCF10A_ordered[,1:6], file="genes_ranked_by_MCF10A_pI.bed", quote=FALSE,
+            sep="\t", row.names = FALSE, col.names = FALSE)
+write.table(MB231_ordered[,1:6], file="genes_ranked_by_MB231_pI.bed", quote=FALSE,
+            sep="\t", row.names = FALSE, col.names = FALSE)
+write.table(SUM159_ordered[,1:6], file="genes_ranked_by_SUM159_pI.bed", quote=FALSE,
+            sep="\t", row.names = FALSE, col.names = FALSE)
+```
+

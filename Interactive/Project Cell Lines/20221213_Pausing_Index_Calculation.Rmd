@@ -1,0 +1,173 @@
+---
+title: "Pausing index Project Cell Lines 12/13/2022"
+output: html_notebook
+---
+#Note on R notebook for anyone else looking at it
+Good way to keep my code documented with the products it produces. Used for
+interactive scripts - stick to simple R scripts for source files. Unlike a normal
+R markdown file, does not rerun all chunks when making the finished product. Instead, 
+run the chunks like in a normal R script, then hit preview and it will take the material
+you've already ran for the printout.
+
+```{r sourcecode}
+source("~/Script repository/R scripting/My_Useful_Fns.R") #12/09/2022 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/My_Useful_Fns.R
+enableJIT(3)
+```
+
+```{r genetab}
+gc <- read.delim(
+  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/Untouched source data/Gencode39_knowngene.hg38.txt.gz",
+  header=TRUE
+)
+#remove irrelevant columns
+gc2 <- gc %>% dplyr::select(-c(7:17, 20, 22, 24:26)) #unless Ching-Hua used detect transcripts?
+gc3 <- gc2[,c(1:3, 7, 5:6, 4, 8:10)]
+colnames(gc3) <- c("chrom", "start", "end", "symbol",
+                       "score", "strand", "ENST_ID", "ID3", "class", "type")
+gc_genes_only <- gc3 %>%
+  filter(type=="protein_coding" & !grepl('chrY|([\\w_]+)alt|random|fix|v1', chrom)) ###86K out of 266K
+gc4p <- gc_genes_only %>%
+  group_by(symbol) %>%
+  filter(strand == "+") %>%
+  mutate(start_site=min(start)) %>%
+  filter(start==start_site) %>%
+  dplyr::select(-c(11)) %>%
+  distinct(symbol, .keep_all = TRUE) %>%
+  ungroup()
+gc4m <- gc_genes_only %>%
+  group_by(symbol) %>%
+  filter(strand == "-") %>%
+  mutate(start_site=max(end)) %>%
+  filter(end==start_site) %>%
+  dplyr::select(-c(11)) %>%
+  distinct(symbol, .keep_all = TRUE) %>%
+  ungroup()
+
+gc4=rbind(gc4p, gc4m)
+gc4$symbol=paste0(gc4$symbol, "_", gc4$start)
+```
+
+
+```{r T47D}
+T47D <- pI(bed=gc4,
+              bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/Split_bams/T47D_R1.BAM",
+              pairedEnd=FALSE, pause_s=0, pause_e=100)
+```
+
+
+```{r MCF7}
+MCF7 <- pI(bed=gc4,
+               bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/Split_bams/MCF7_R1.BAM",
+               pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+
+
+```{r MCF10A}
+MCF10A <- pI(bed=gc4,
+                 bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/Split_bams/MCF10A_R1.BAM",
+                 pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+
+
+```{r SUM159}
+SUM159 <- pI(bed=gc4,
+                 bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/Split_bams/SUM159_R1.BAM",
+                 pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+
+
+```{r MB231}
+MB231 <- pI(bed=gc4,
+                bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/Split_bams/MB231_R1.BAM",
+                pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+
+```{r processing and combining tables}
+pI_tab <- cbind(T47D, MCF7[,13:18], SUM159[,13:18], MB231[,13:18], MCF10A[,13:18])
+colnames(pI_tab) = c(colnames(pI_tab[,1:12]),
+                     paste0("T47D",           ".", colnames(pI_tab[,13:18])),
+                     paste0("MCF7",           ".", colnames(pI_tab[,13:18])),
+                     paste0("SUM159",         ".", colnames(pI_tab[,13:18])),
+                     paste0("MB231",          ".", colnames(pI_tab[,13:18])),
+                     paste0("MCF10A",         ".", colnames(pI_tab[,13:18])))
+write.table(pI_tab, file="cell_lines_pI_3_no_filter.txt", quote=FALSE, sep="\t", row.names = FALSE)
+pI_tab_longform = pI_tab %>%
+  pivot_longer(cols=c(13:42), names_to = c("cell_line", ".value"), names_pattern = "(.+)\\.(.+)")
+```
+
+```{r graphing}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+ggplot(data=pI_tab_longform) +
+  geom_violin(aes(y=total_norm, x=cell_line)) +
+  mytheme + 
+  ylab("Normalized counts") +
+  xlab("") +
+  scale_x_discrete(labels=c("T47D","MCF7","SUM159","MB231","MCF10A")) #most are under 5
+
+ggplot(data=pI_tab_longform) +
+  geom_point(aes(y=total_norm, x=pI, color=cell_line)) +
+  mytheme + 
+  ylab("Body counts, length normalized") +
+  xlab("pI")
+```
+
+```{r summarizing}
+summary(pI_tab_longform$pI)
+summary(pI_tab_longform$total_norm)
+```
+
+```{r summarizing no NA or Inf}
+pI_tab_longform2 = pI_tab_longform %>%
+  filter(!is.na(pI) & pI!="Inf")
+summary(pI_tab_longform2$pI)
+summary(pI_tab_longform2$total_norm)
+```
+
+```{r more distribution plots}
+ggplot(data=pI_tab_longform) +
+  geom_violin(aes(y=log10(total_norm), x=cell_line)) +
+  mytheme + 
+  ylab("Normalized log counts") +
+  xlab("") +
+  scale_x_discrete(labels=c("T47D","MCF7","SUM159","MB231","MCF10A"))
+ggplot(data=pI_tab_longform) +
+  geom_violin(aes(y=log10(pI), x=cell_line)) +
+  mytheme + 
+  ylab("Normalized log pI") +
+  xlab("") +
+  scale_x_discrete(labels=c("T47D","MCF7","SUM159","MB231","MCF10A"))
+```
+
+```{r filtering}
+pI_tab_longform2 = pI_tab_longform %>%
+  filter(!is.na(pI) & pI!="Inf" & total_norm>=1) #puts us at 26665 rows, unknown num genes
+ggplot(data=pI_tab_longform2) +
+  geom_violin(aes(y=log10(pI), x=cell_line)) +
+  mytheme + 
+  ylab("Normalized log pI") +
+  xlab("") +
+  scale_x_discrete(labels=c("T47D","MCF7","SUM159","MB231","MCF10A"))
+summary(pI_tab_longform2$pI)
+```
+
+```{r output}
+pI_tab_wideform = pI_tab_longform2 %>%
+  pivot_wider(values_from=c(13:19), names_from = cell_line, names_sep=".",
+              names_vary="slowest", values_fill = NA)
+dim(pI_tab_wideform)
+write.table(pI_tab_wideform, file="project_cell_lines_pI.txt", quote=FALSE, sep="\t", row.names = FALSE)
+```
+

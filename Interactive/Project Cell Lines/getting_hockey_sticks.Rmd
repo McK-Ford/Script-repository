@@ -1,0 +1,242 @@
+---
+title: "Hockey sticks and basic ontology"
+output: html_notebook
+---
+
+```{r setup}
+library(tidyverse)
+library(data.table)
+project_cell_lines_pI <- read.delim("C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V2/project_cell_lines_pI.txt")
+setDT(project_cell_lines_pI)
+```
+
+```{r rank order}
+project_cell_lines_pI[, ':='(pI_ro.T47D=frank(pI.T47D, na.last="keep"),  #this is data.table rank order function, bc much faster than base R
+                             pI_ro.MB231=frank(pI.MB231, na.last="keep"),
+                             pI_ro.SUM159=frank(pI.SUM159, na.last="keep"),
+                             pI_ro.MCF7=frank(pI.MCF7, na.last="keep"),
+                             pI_ro.MCF10A=frank(pI.MCF10A, na.last="keep"))]
+```
+
+```{r plots_T47D}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2, hjust=0.5),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+
+quantile(project_cell_lines_pI$pI.T47D, 0.9, na.rm=TRUE)
+quantile(project_cell_lines_pI$pI_ro.T47D, 0.9, na.rm=TRUE)
+T47_hs = ggplot(data=project_cell_lines_pI) +
+  geom_point(aes(y=pI.T47D, x=pI_ro.T47D)) +
+  mytheme + 
+  xlab("pI_rank") +
+  ylab("pI") +
+  ggtitle("T47D")+
+  geom_hline(aes(yintercept=32), linetype="dotted")+
+  geom_vline(aes(xintercept=5005), linetype="dotted")
+T47_hs
+```
+
+```{r plots_MB231}
+quantile(project_cell_lines_pI$pI.MB231, 0.9, na.rm=TRUE)
+quantile(project_cell_lines_pI$pI_ro.MB231, 0.9, na.rm=TRUE)
+MB231_hs = ggplot(data=project_cell_lines_pI) +
+  geom_point(aes(y=pI.MB231, x=pI_ro.MB231)) +
+  mytheme + 
+  xlab("pI_rank") +
+  ylab("pI") +
+  ggtitle("MB231")+
+  geom_hline(aes(yintercept=17), linetype="dotted")+
+  geom_vline(aes(xintercept=4891), linetype="dotted")
+MB231_hs
+```
+
+```{r plot_sum159}
+quantile(project_cell_lines_pI$pI.SUM159, 0.9, na.rm=TRUE)
+quantile(project_cell_lines_pI$pI_ro.SUM159, 0.9, na.rm=TRUE)
+SUM159_hs = ggplot(data=project_cell_lines_pI) +
+  geom_point(aes(y=pI.SUM159, x=pI_ro.SUM159)) +
+  mytheme + 
+  xlab("pI_rank") +
+  ylab("pI") +
+  ggtitle("SUM159")+
+  geom_hline(aes(yintercept=26), linetype="dotted")+
+  geom_vline(aes(xintercept=4607), linetype="dotted")
+SUM159_hs
+```
+
+```{r plot_mcf7}
+quantile(project_cell_lines_pI$pI.MCF7, 0.9, na.rm=TRUE)
+quantile(project_cell_lines_pI$pI_ro.MCF7, 0.9, na.rm=TRUE)
+MCF7_hs = ggplot(data=project_cell_lines_pI) +
+  geom_point(aes(y=pI.MCF7, x=pI_ro.MCF7)) +
+  mytheme + 
+  xlab("pI_rank") +
+  ylab("pI") +
+  ggtitle("MCF7")+
+  geom_hline(aes(yintercept=70), linetype="dotted")+
+  geom_vline(aes(xintercept=4645), linetype="dotted")
+MCF7_hs
+```
+
+```{r plot_MCF10A}
+quantile(project_cell_lines_pI$pI.MCF10A, 0.9, na.rm=TRUE)
+quantile(project_cell_lines_pI$pI_ro.MCF10A, 0.9, na.rm=TRUE)
+MCF10A_hs = ggplot(data=project_cell_lines_pI) +
+  geom_point(aes(y=pI.MCF10A, x=pI_ro.MCF10A)) +
+  mytheme + 
+  xlab("pI_rank") +
+  ylab("pI") +
+  ggtitle("MCF10A")+
+  geom_hline(aes(yintercept=40), linetype="dotted")+
+  geom_vline(aes(xintercept=4380), linetype="dotted")
+MCF10A_hs
+```
+
+```{r pdf_output}
+pdf(file="project_cell_lines_hockey_sticks.pdf", width = 7)
+T47_hs
+MB231_hs
+SUM159_hs
+MCF7_hs
+MCF10A_hs
+dev.off()
+```
+
+```{r subsets}
+top_10perc_SUM159 = project_cell_lines_pI %>% filter(pI.SUM159 >= 26)
+top_10perc_T47D = project_cell_lines_pI %>% filter(pI.T47D >= 32)
+top_10perc_MB231 = project_cell_lines_pI %>% filter(pI.MB231 >= 17)
+top_10perc_MCF7 = project_cell_lines_pI %>% filter(pI.MCF7 >= 70)
+top_10perc_MCF10A = project_cell_lines_pI %>% filter(pI.MCF10A >= 40)
+dim(top_10perc_SUM159)
+dim(top_10perc_T47D)
+dim(top_10perc_MB231)
+dim(top_10perc_MCF7)
+dim(top_10perc_MCF10A)
+```
+
+```{r}
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(enrichR)
+```
+
+```{r databases}
+options(enrichR.base.address="https://amp.pharm.mssm.edu/Enrichr/")
+dbs <-listEnrichrDbs()
+```
+
+```{r}
+dbs <- c("GO_Molecular_Function_2021", "GO_Biological_Process_2021", "KEGG_2021_Human")
+MCF7_list = top_10perc_MCF7[[4]]
+MCF7_enriched <- enrichr(MCF7_list, dbs)
+SUM159_list = top_10perc_SUM159[[4]]
+SUM159_enriched <- enrichr(SUM159_list, dbs)
+T47D_list = top_10perc_T47D[[4]]
+T47D_enriched <- enrichr(T47D_list, dbs)
+MB231_list = top_10perc_MB231[[4]]
+MB231_enriched <- enrichr(MB231_list, dbs)
+MCF10A_list = top_10perc_MCF10A[[4]]
+MCF10A_enriched <- enrichr(MCF10A_list, dbs)
+```
+LoL = list of lists
+```{r}
+LoL = list(MCF7_enriched, SUM159_enriched, T47D_enriched, MB231_enriched, MCF10A_enriched)
+dbs = as.list(dbs)
+line_ids = list("MCF7", "SUM159", "T47D", "MB231", "MCF10A")
+for (i in seq_along(LoL)){
+  tmp = Map(cbind, LoL[[i]], db_id=dbs)
+  tmp2 = do.call(rbind, tmp)
+  LoL[[i]] = tmp2
+  }
+LoL2 = Map(cbind, LoL, line_id=line_ids)
+enrichment_tab = do.call(rbind, LoL2)
+```
+
+```{r}
+enrichment_tab = enrichment_tab %>%
+  dplyr::select(-c(5,6))
+write.table(enrichment_tab, file="ontology.txt", quote=FALSE, sep="\t", row.names = FALSE)
+```
+
+```{r}
+ont = enrichment_tab %>%
+  separate(col=2, into=c("num_genes_match", "num_genes_set"),
+           sep = "/", remove=TRUE, convert=TRUE)
+```
+
+```{r}
+ont_GO_biol = ont[ont$db_id == "GO_Biological_Process_2021",]
+```
+
+```{r}
+ont_GO_biol = ont_GO_biol %>% 
+    group_by(line_id) %>%
+    slice_min(P.value, n=10) %>%
+    ungroup()
+```
+
+
+```{r}
+ont_GO_biol_MCF7 = ggplot(data=ont_GO_biol[ont_GO_biol$line_id=="MCF7",]) +
+  geom_col(aes(y=reorder(Term, P.value, decreasing=TRUE), x=num_genes_match, fill=P.value)) +
+  mytheme + 
+  xlab("Counts in set") +
+  ylab("Gene set") +
+  ggtitle("GO_biol MCF7") +
+  scale_y_discrete(labels = function(x) stringr::str_trunc(x, 30))
+ont_GO_biol_MCF10A = ggplot(data=ont_GO_biol[ont_GO_biol$line_id=="MCF10A",]) +
+  geom_col(aes(y=reorder(Term, P.value, decreasing=TRUE), x=num_genes_match, fill=P.value)) +
+  mytheme + 
+  xlab("Counts in set") +
+  ylab("Gene set") +
+  ggtitle("GO_biol MCF10A") +
+  scale_y_discrete(labels = function(x) stringr::str_trunc(x, 30))
+ont_GO_biol_MB231 = ggplot(data=ont_GO_biol[ont_GO_biol$line_id=="MB231",]) +
+  geom_col(aes(y=reorder(Term, P.value, decreasing=TRUE), x=num_genes_match, fill=P.value)) +
+  mytheme + 
+  xlab("Counts in set") +
+  ylab("Gene set") +
+  ggtitle("GO_biol MB231") +
+  scale_y_discrete(labels = function(x) stringr::str_trunc(x, 30))
+ont_GO_biol_SUM159 = ggplot(data=ont_GO_biol[ont_GO_biol$line_id=="SUM159",]) +
+  geom_col(aes(y=reorder(Term, P.value, decreasing=TRUE), x=num_genes_match, fill=P.value)) +
+  mytheme + 
+  xlab("Counts in set") +
+  ylab("Gene set") +
+  ggtitle("GO_biol SUM159") +
+  scale_y_discrete(labels = function(x) stringr::str_trunc(x, 30))
+ont_GO_biol_T47D = ggplot(data=ont_GO_biol[ont_GO_biol$line_id=="T47D",]) +
+  geom_col(aes(y=reorder(Term, P.value, decreasing=TRUE), x=num_genes_match, fill=P.value)) +
+  mytheme + 
+  xlab("Counts in set") +
+  ylab("Gene set") +
+  ggtitle("GO_biol T47D") +
+  scale_y_discrete(labels = function(x) stringr::str_trunc(x, 30))
+ont_GO_biol_MCF7
+ont_GO_biol_MCF10A
+ont_GO_biol_MB231
+ont_GO_biol_SUM159
+ont_GO_biol_T47D
+```
+
+```{r ontology_pdf}
+pdf(file="project_cell_lines_ontology.pdf", width = 15)
+ont_GO_biol_MCF7
+ont_GO_biol_MCF10A
+ont_GO_biol_MB231
+ont_GO_biol_SUM159
+ont_GO_biol_T47D
+dev.off()
+```
