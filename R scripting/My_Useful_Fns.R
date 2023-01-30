@@ -7,6 +7,7 @@ library(compiler)
 library(data.table)
 library(GenomicAlignments)
 library(reshape2)
+library(rtracklayer)
 enableJIT(3)
 ##################
 ## 2. Functions ##
@@ -236,8 +237,55 @@ list_chrs <- function(){
   return(chrs)
 }
 
-
-
+score_matrix_bigwig <- function(bed, bw, b=NA, a=NA, n=NA, bs=10,
+                                debug=FALSE, ignorestrand=FALSE){
+  chrs = list_chrs()
+  # chrs = list("chr14", "chr19")
+  tmp_list=chrs
+  tmp_ref_list=chrs
+  for (i in seq_along(chrs)) {
+    bw_sub = import(bw, selection=GenomicSelection("hg38", chrom=chrs[[i]], colnames="score"))
+    print(paste0("getting regions for chrom ", chrs[[i]], " at ", Sys.time()))
+    bed_sub = bed %>% filter(bed[[1]]==chrs[[i]])
+    mat_list = bi_anch_mat(bed_sub = bed_sub, n=n)
+    hist = mat_list[[1]]
+    ends_mat = mat_list[[2]]
+    strandvec = rep(bed_sub[[6]], times=n)
+    long_hist=reshape2::melt(hist, na.rm=TRUE) #longform lets us generate 'all
+    #bin starts' and 'all bin ends' vectors for scoring.
+      long_ends=reshape2::melt(ends_mat, na.rm=TRUE)
+      test = GRanges( seqnames = chrs[[i]], ranges = IRanges(
+        start=long_hist[[3]], end=long_ends[[3]]), strand=strandvec) 
+      test$ID = long_hist[[1]]
+      olap = findOverlaps(test, bw_sub, ignore.strand=ignorestrand)
+      bw_df = data.frame(bw_sub[subjectHits(olap)])
+      regions_df = data.frame(test[queryHits(olap)])
+      regions_w_raw_scores = cbind(bw_df, regions_df)
+      names(regions_w_raw_scores) <- c(
+        "chrom", "bs", "be", "bin_w", "star", "score",
+        names(regions_w_raw_scores[,7:12])
+        )
+      gs_before_bs = pmax((regions_w_raw_scores$start - regions_w_raw_scores$bs),0)
+      ge_after_be = pmax((regions_w_raw_scores$be - regions_w_raw_scores$end),0)
+      regions_w_raw_scores$adjustor <- (
+        regions_w_raw_scores$bin_w - gs_before_bs - ge_after_be) / regions_w_raw_scores$bin_w
+      regions_w_raw_scores$adjusted_score <- regions_w_raw_scores$score * regions_w_raw_scores$adjustor
+      setDT(regions_w_raw_scores) 
+      tmp1 = regions_w_raw_scores[, head(.SD, 1), by=.(ID, start), .SDcols=c("seqnames", "end", "strand")]
+      tmp2 = regions_w_raw_scores[, list((sum(adjusted_score)/sum(adjustor))), by=.(start)]
+      summarized_regions_w_raw_scores = cbind(tmp1, tmp2)
+ #   long_hist$value=summarized_regions_w_raw_scores$V1
+#    hist=acast(long_hist, Var1~Var2) #get the hist back into wideform.
+ #     hist=acast(summarized_regions_w_raw_scores, Var1~Var2)
+ #   tmp_list[[i]] = hist
+      tmp_list[[i]] = summarized_regions_w_raw_scores
+ #   tmp_ref_list[[i]] = bed_sub
+  }
+  hist = do.call(rbind, tmp_list) #collapse into one matrix
+#  bed = do.call(rbind,tmp_ref_list)
+#  hist=cbind(as.data.table(bed), as.data.table(hist))
+  return(hist)
+  }
 
 
 
