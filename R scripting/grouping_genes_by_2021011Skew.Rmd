@@ -1,0 +1,297 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r sourcecode}
+source("~/Script repository/R scripting/My_Useful_Fns.R") #12/09/2022 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/My_Useful_Fns.R
+enableJIT(3)
+```
+
+```{r genetab1}
+gc <- read.delim(
+  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/Untouched source data/Gencode39_knowngene.hg38.txt.gz",
+  header=TRUE
+)
+#remove irrelevant columns
+gc2 <- gc %>% dplyr::select(-c(7:17, 20, 22, 24:26)) #unless Ching-Hua used detect transcripts?
+gc3 <- gc2[,c(1:3, 7, 5:6, 4, 8:10)]
+colnames(gc3) <- c("chrom", "start", "end", "symbol",
+                       "score", "strand", "ENST_ID", "ID3", "class", "type")
+gc_genes_only <- gc3 %>%
+  filter(type=="protein_coding" & !grepl('chrY|([\\w_]+)alt|random|fix|v1', chrom)) ###86K out of 266K
+gc4p <- gc_genes_only %>%
+  group_by(symbol) %>%
+  filter(strand == "+") %>%
+  mutate(start_site=min(start)) %>%
+  filter(start==start_site) %>%
+  dplyr::select(-c(11)) %>%
+  distinct(symbol, .keep_all = TRUE) %>%
+  ungroup()
+gc4m <- gc_genes_only %>%
+  group_by(symbol) %>%
+  filter(strand == "-") %>%
+  mutate(start_site=max(end)) %>%
+  filter(end==start_site) %>%
+  dplyr::select(-c(11)) %>%
+  distinct(symbol, .keep_all = TRUE) %>%
+  ungroup()
+
+gc4p$symbol=paste0(gc4p$symbol, "_", gc4p$start)
+gc4m$symbol=paste0(gc4m$symbol, "_", gc4m$start)
+```
+That's around 9K in each direction. What about with netCAGE TSSes?
+```{r}
+ tx_p <- read.delim("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE118075_Matsuki_2019_MCF7_CAGE_netCAGE/getTSSes/tx_p.txt", header=FALSE)
+ tx_m <- read.delim("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE118075_Matsuki_2019_MCF7_CAGE_netCAGE/getTSSes/tx_m.txt", header=FALSE)
+```
+This is about 7K each. Okay, I'll stick with this. Grabbing column names from the script that made these (tsscallingnetcage.R)
+
+```{r}
+cn = c("CGI_ID", "genechrom", "cgi_s", "cgi_e",
+                              "gene_s", "gene_e", "ensembl_ID", "strand",
+                              "geneName", "unitprot_ID", "class", "transtype",
+                              "netcagetss", "tssscore")
+colnames(tx_p) = cn
+colnames(tx_m) = cn
+```
+So I need unique symbol, and unique order.
+```{r}
+txp2 <- tx_p %>%
+  group_by(geneName) %>%
+  mutate(start_site=min(gene_s)) %>%
+  filter(gene_s==start_site) %>%
+  dplyr::select(-c(15)) %>%
+  distinct(geneName, .keep_all = TRUE) %>%
+  ungroup()
+txm2 <- tx_m %>%
+  group_by(geneName) %>%
+  mutate(start_site=max(gene_e)) %>%
+  filter(gene_e==start_site) %>%
+  dplyr::select(-c(15)) %>%
+  distinct(geneName, .keep_all = TRUE) %>%
+  ungroup()
+txp2=txp2[,c(2,5,4,9,14,8)]
+txm2=txm2[,c(2,3,6,9,14,8)]
+```
+There is some noncoding in there which may or may not be desirable.
+
+We'll say 0-100 for TSS, and 50-50 around CGI edge. So greater than 150 dist. - about 6k each.
+```{r}
+txp3 = txp2[(txp2[[3]] - txp2[[2]])>=150,]
+txp3 = order_bed_by_chrom(txp3)
+
+tss_bedp = txp3
+cgi_bedp = txp3
+tss_bedp[3] = tss_bedp[2] + 100 #end anchor is TSS + 100
+cgi_bedp[2] = cgi_bedp[3] - 50 #start anchor is CGI_e - 50
+cgi_bedp[3] = cgi_bedp[3] + 50 #end anchor is CGI_e + 50
+```
+```{r}
+txm3 = txm2[(txm2[[3]] - txm2[[2]])>=150,]
+txm3 = order_bed_by_chrom(txm3)
+
+tss_bedm = txm3
+cgi_bedm = txm3
+tss_bedm[2] = tss_bedm[3] - 100
+cgi_bedm[2] = cgi_bedm[2] - 50
+cgi_bedm[3] = cgi_bedm[2] + 50
+```
+oh yeah this metaplotter isn't designed to pull from bigwigs...So. Combine the new one with the old one (which did use bw) into a new function to figure out what changes I need. So. Try with one chromosome first.
+```{r}
+bed=tss_bedp
+library(rtracklayer)
+bw_sub = import("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Sequence_based_analysis/p_smooth_skew.bw", selection=GenomicSelection("hg38", chrom="chr1", colnames="score"))
+bed_sub = bed %>% filter(bed[[1]]=="chr1")
+```
+```{r}
+mat_list = bi_anch_mat(bed_sub = bed_sub, n=1)
+hist = mat_list[[1]]
+ends_mat = mat_list[[2]]
+strandvec = rep(bed_sub[[6]], times=1)
+long_hist=reshape2::melt(hist, na.rm=TRUE)
+```
+
+```{r}
+long_ends=reshape2::melt(ends_mat, na.rm=TRUE)
+test=GRanges( seqnames = "chr1", ranges = IRanges(
+        start=long_hist[[3]], end=long_ends[[3]]), strand=strandvec)
+test$ID=long_hist[[1]]
+```
+
+```{r}
+olap = findOverlaps(test, bw_sub, ignore.strand=FALSE)
+```
+
+```{r}
+bw_df = data.frame(bw_sub[subjectHits(olap)])
+regions_df = data.frame(test[queryHits(olap)])
+```
+
+```{r}
+regions_w_raw_scores = cbind(bw_df, regions_df)
+```
+
+```{r}
+names(regions_w_raw_scores) <- c(
+      "chrom", "bs", "be", "bin_w", "star", "score",
+      names(regions_w_raw_scores[7:12])
+    )
+gs_before_bs = pmax((regions_w_raw_scores$start - regions_w_raw_scores$bs),0)
+ge_after_be = pmax((regions_w_raw_scores$be - regions_w_raw_scores$end),0)
+regions_w_raw_scores$adjustor <- (
+      regions_w_raw_scores$bin_w - gs_before_bs - ge_after_be) / regions_w_raw_scores$bin_w
+
+regions_w_raw_scores$adjusted_score <- regions_w_raw_scores$score * regions_w_raw_scores$adjustor
+
+setDT(regions_w_raw_scores) 
+tmp1 = regions_w_raw_scores[, head(.SD, 1), by=.(ID, start), .SDcols=c("seqnames", "end", "strand")]
+tmp2 = regions_w_raw_scores[, list((sum(adjusted_score)/sum(adjustor))), by=.(start)]
+summarized_regions_w_raw_scores = cbind(tmp1, tmp2)
+```
+At that point we should be able to bind the score back into hist - now implement it.
+
+Oh geez. Since there's empty spaces in the skew bw instead of those regions being scored as 0 (because we only generated around the genes), we get errors where something is present in one dataset but not the other, because an overlap can't be found with nothing...So given that, I think we need to do this with the same set of TSSes that was used to make this GC skew set, and post presentation I'll remake the skew and fix it. Or I could remake the skew with the netcage TSSes. Those are my only real options. Or fill in skew with 0, could just get rid of genes with a 0 skew.
+```{r}
+txp_tss_scores = score_matrix_bigwig(bed = tss_bedp,
+                                     bw =  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Sequence_based_analysis/p_smooth_skew.bw",
+                                     n = 1)
+```
+Oh geez. Since there's empty spaces in the skew bw instead of those regions being scored as 0 (because we only generated around the genes), we get errors where something is present in one dataset but not the other, because an overlap can't be found with nothing...So given that, I think we need to do this with the same set of TSSes that was used to make this GC skew set, and post presentation I'll remake the skew and fix it. Or I could remake the skew with the netcage TSSes. Those are my only real options. Or fill in skew with 0, could just get rid of genes with a 0 skew.
+
+```{r}
+gcp2 = gc4p[(gc4p[[3]] - gc4p[[2]])>=150,]
+gcp3 = order_bed_by_chrom(gcp2)
+
+tss_gcp = gcp3
+tss_gcp[3] = tss_gcp[2] + 100
+
+txp_tss_scores = score_matrix_bigwig(bed = tss_gcp,
+                                     bw =  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Sequence_based_analysis/p_smooth_skew.bw",
+                                     n = 1)
+```
+
+lets just do refseq, I'm looking at R-loops from a non-mcf7 genome anyway, when TSSes are cell line specific at times.
+
+```{r}
+geneDir="/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/"
+refseq_curated_longest_cgi_minus <- read.delim(paste0(
+  geneDir,
+  "refseq_curated_longest_cgi_minus.hg38.txt"))
+refseq_curated_longest_cgi_plus <- read.delim(paste0(
+  geneDir,
+  "refseq_curated_longest_cgi_plus.hg38.txt"))
+```
+
+```{r}
+refseq_curated_longest_cgi_plus$uniq_id =
+  paste0(
+    refseq_curated_longest_cgi_plus$name,
+    refseq_curated_longest_cgi_plus$cpg_s
+    )
+refseq_curated_longest_cgi_minus$uniq_id =
+  paste0(
+    refseq_curated_longest_cgi_minus$name,
+    refseq_curated_longest_cgi_minus$cpg_s
+    )
+```
+
+```{r}
+rc_p3 = refseq_curated_longest_cgi_plus[(refseq_curated_longest_cgi_plus[[3]] - refseq_curated_longest_cgi_plus[[5]])>=150,]
+rc_p3 = order_bed_by_chrom(rc_p3)
+rc_p3 = rc_p3[,c(1,5,3,9,6,7)]
+tss_bedp = rc_p3
+cgi_bedp = rc_p3
+tss_bedp[3] = tss_bedp[2] + 100 #end anchor is TSS + 100
+cgi_bedp[2] = cgi_bedp[3] - 50 #start anchor is CGI_e - 50
+cgi_bedp[3] = cgi_bedp[3] + 50 #end anchor is CGI_e + 50
+```
+```{r}
+rc_m3 = refseq_curated_longest_cgi_minus[(refseq_curated_longest_cgi_minus[[3]] - refseq_curated_longest_cgi_minus[[2]])>=150,]
+rc_m3 = order_bed_by_chrom(rc_m3)
+rc_m3 = rc_m3[,c(1,2,6,9,6,7)]
+tss_bedm = rc_m3
+cgi_bedm = rc_m3
+tss_bedm[2] = tss_bedm[3] - 100
+cgi_bedm[2] = cgi_bedm[2] - 50
+cgi_bedm[3] = cgi_bedm[2] + 50
+```
+
+
+```{r}
+txp_tss_scores = score_matrix_bigwig(bed = tss_bedp,
+                                     bw =  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Sequence_based_analysis/p_smooth_skew.bw",
+                                     n = 1)
+```
+Not sure why I still lost regions but I'm not messing with it tonight.
+
+```{r}
+txm_tss_scores = score_matrix_bigwig(bed = tss_bedm,
+                                     bw =  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Sequence_based_analysis/m_smooth_skew.bw",
+                                     n = 1)
+```
+```{r}
+txp_cgi_scores = score_matrix_bigwig(bed = cgi_bedp,
+                                     bw =  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Sequence_based_analysis/p_smooth_skew.bw",
+                                     n = 1)
+```
+```{r}
+txm_cgi_scores = score_matrix_bigwig(bed = cgi_bedm,
+                                     bw =  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Sequence_based_analysis/m_smooth_skew.bw",
+                                     n = 1)
+```
+
+well this should get them together, ugh
+```{r}
+plus1 = merge(refseq_curated_longest_cgi_plus, txp_tss_scores[,c(1,7)],
+              by.x="uniq_id", by.y="ID", all=TRUE)
+plus2 = merge(plus1, txp_cgi_scores[,c(1,7)],
+              by.x="uniq_id", by.y="ID", all=TRUE)
+```
+
+```{r}
+minus1 = merge(refseq_curated_longest_cgi_minus, txm_tss_scores[,c(1,7)],
+              by.x="uniq_id", by.y="ID", all=TRUE)
+minus2 = merge(minus1, txm_cgi_scores[,c(1,7)],
+              by.x="uniq_id", by.y="ID", all=TRUE)
+```
+
+```{r}
+pp = plus2 %>% filter (V1.x>V1.y)
+dp = plus2 %>% filter (V1.y>V1.x)
+```
+
+```{r}
+pm = minus2 %>% filter (V1.x>V1.y)
+dm = minus2 %>% filter (V1.y>V1.x)
+```
+
+For metaplotting
+```{r}
+pp=pp[,c(2,6,4,9,10,8)] |> filter(!is.na(V1.x))
+```
+```{r}
+dp=dp[,c(2,6,4,9,11,8)] |> filter(!is.na(V1.y))
+pm=pm[,c(2,3,7,9,10,8)] |> filter(!is.na(V1.x))
+dm=dm[,c(2,3,7,9,11,8)] |> filter(!is.na(V1.y))
+```
+
+```{r}
+write.table(
+  pp, "prox_plus.bed", quote=FALSE,
+  row.names=FALSE, col.names=FALSE, sep = "\t"
+)
+write.table(
+  dp, "dist_plus.bed", quote=FALSE,
+  row.names=FALSE, col.names=FALSE, sep = "\t"
+)
+write.table(
+  pm, "prox_minus.bed", quote=FALSE,
+  row.names=FALSE, col.names=FALSE, sep = "\t"
+)
+write.table(
+  dm, "dist_minus.bed", quote=FALSE,
+  row.names=FALSE, col.names=FALSE, sep = "\t"
+)
+```
+
