@@ -1,0 +1,46 @@
+---
+title: "Rank difference"
+output: html_notebook
+---
+
+Starts out like normal hockey stick script
+```{r setup}
+library(tidyverse)
+library(data.table)
+project_cell_lines_pI <- read.delim("C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V2/project_cell_lines_pI.txt")
+setDT(project_cell_lines_pI)
+```
+
+```{r rank order}
+project_cell_lines_pI[, ':='(pI_ro.T47D=frank(pI.T47D, na.last="keep"),  #this is data.table rank order function, bc much faster than base R
+                             pI_ro.MB231=frank(pI.MB231, na.last="keep"),
+                             pI_ro.SUM159=frank(pI.SUM159, na.last="keep"),
+                             pI_ro.MCF7=frank(pI.MCF7, na.last="keep"),
+                             pI_ro.MCF10A=frank(pI.MCF10A, na.last="keep"))]
+```
+We want rank_diff for MCF7 vs SUM159 and for T47D vs MCF10A
+```{r}
+project_cell_lines_pI$rankdif_MCF7vsSUM = project_cell_lines_pI$pI_ro.MCF7 - project_cell_lines_pI$pI_ro.SUM159
+project_cell_lines_pI$rankdif_T47DvsMB231 = project_cell_lines_pI$pI_ro.T47D - project_cell_lines_pI$pI_ro.MB231
+```
+
+```{r}
+project_cell_lines_pI$absrankdif_MCF7vsSUM = abs(project_cell_lines_pI$rankdif_MCF7vsSUM)
+project_cell_lines_pI$absrankdif_T47DvsMB231 = abs(project_cell_lines_pI$rankdif_T47DvsMB231)
+```
+
+```{r}
+write.table(project_cell_lines_pI, file="project_cell_lines_pI_withrankdif.txt", quote=FALSE, sep="\t", row.names = FALSE)
+```
+
+For Laura - I have not tested this code as it's from stack overflow, but it should work for highlighting the genes you pick for the heatmaps. Note that the variable names will have to be changed to the correct ones.
+```{r}
+# create the subset
+gene1 <- subset(gene_df, Symbol == "Gene1")
+
+# plot the data
+ggplot(gene_df, aes(x=x, y=y)) + geom_point() +  # this is the base plot
+  geom_point(data=gene1, colour="red") +  # this adds a red point
+  geom_text(data=gene1, label="Gene1", vjust=1) # this adds a label for the red point
+```
+
