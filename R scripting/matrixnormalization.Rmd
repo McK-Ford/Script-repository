@@ -1,0 +1,168 @@
+---
+title: "hclust"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+```
+
+```{r}
+pI_tab <- read.delim(
+  "C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V3/project_cell_lines_pI.txt"
+  )
+```
+
+```{r}
+pI_tab_simple = pI_tab[,c(1:4, 19, 26, 33, 40, 47)]
+```
+
+```{r}
+pI_tab_simple = pI_tab_simple %>%
+  separate(symbol, into=c("symbol", NA), sep = "_") %>% filter(!grepl('chrY|chrX', chrom))
+```
+
+Let's do this with NA as 0. So...
+
+```{r}
+pI_tab_na_as_0 = pI_tab_simple %>% 
+            mutate(pI.MCF7 = replace_na(pI.MCF7, 0),
+                   pI.SUM159 = replace_na(pI.SUM159, 0),
+                   pI.MCF10A = replace_na(pI.MCF10A, 0),
+                   pI.T47D = replace_na(pI.T47D, 0),
+                   pI.MB231 = replace_na(pI.MB231, 0)
+                   )
+```
+
+
+```{r}
+pI_tab_log10 = cbind(
+  pI_tab_na_as_0[,1:4], log10(as.matrix(pI_tab_na_as_0[,5:9])+1)
+  )
+```
+
+
+```{r}
+pI_tab_var = cbind(
+  pI_tab_log10,
+  apply(
+    pI_tab_log10[,5:9],
+    MARGIN=1,
+    FUN=var,
+    na.rm=TRUE
+    )
+  )
+colnames(pI_tab_var) = c(colnames(pI_tab_var)[1:9], "pI_var")
+```
+
+```{r}
+summary(pI_tab_var$pI_var)
+quantile(pI_tab_var$pI_var, .9)
+```
+So we want variance greater than 0.56.
+```{r}
+max_var_pI = pI_tab_var %>%
+  filter(pI_var >= 0.56)
+```
+
+Leaves us with 807 genes. Now I need to hclust in both directions.
+
+```{r}
+testclust = hclust(dist(max_var_pI[,5:9]))
+plot(testclust)
+```
+
+```{r}
+geneclust = hclust(dist(t(max_var_pI[,5:9])))
+plot(geneclust)
+```
+:) Well that's what we wanted to see!
+Notes for later - dist defaults to euclidian. hclust defaults to 'agglomeration method complete"
+
+```{r}
+library(ggdendro)
+```
+
+Now to retrieve the list...
+```{r}
+genes_as_dendro = as.dendrogram(testclust)
+cells_as_dendro = as.dendrogram(geneclust)
+dendro_gene_plot = ggdendrogram(genes_as_dendro, theme_dendro=TRUE, rotate=TRUE) +
+  theme(axis.text.y=element_text(size=2))
+dendro_gene_plot
+dendro_cell_plot = ggdendrogram(cells_as_dendro, theme_dendro=TRUE, rotate=FALSE) +
+  theme(axis.text.y=element_text(size=4))
+dendro_cell_plot
+
+```
+Following anothers code here so a bit of credit their way:
+https://jcoliver.github.io/learn-r/008-ggplot-dendrograms-and-heatmaps.html
+(bc going from base dendrogram to ggplot is a little complex)
+
+```{r}
+max_var_pI_long = pivot_longer(max_var_pI,
+                                    cols=c(5:9),
+                                    names_to = c(".value", "cell_line"),
+                                    names_pattern = "(.+)\\.(.+)")
+```
+```{r}
+hm_plot <- max_var_pI_long %>%
+  ggplot(aes(x = cell_line, y = symbol)) +
+  geom_tile(aes(fill = pI)) +
+  theme(axis.text.y = element_text(size = 5))
+hm_plot
+```
+Factors are the way to order heatmaps for ggplot2.
+```{r}
+dendro_gene_order <- order.dendrogram(genes_as_dendro)
+max_var_pI_long$symbol <- factor(x=max_var_pI_long$symbol, levels=max_var_pI$symbol[dendro_gene_order], ordered=TRUE)
+
+#dendro_cell_order <- order.dendrogram(cells_as_dendro)
+#max_var_pI_long$cell_line <- factor(x=max_var_pI_long$cell_line, levels=max_var_pI_long$cell_line[dendro_gene_order], ordered=TRUE)
+```
+Hmm. So since the cell lines are 'duplicated' they don't want to factor with this command. What about if I hardcode it based on the dendrogram I'm looking at?
+```{r}
+dendro_gene_order <- order.dendrogram(genes_as_dendro)
+max_var_pI_long$symbol <- factor(x=max_var_pI_long$symbol, levels=max_var_pI$symbol[dendro_gene_order], ordered=TRUE)
+
+dendro_cell_order <- order.dendrogram(cells_as_dendro)
+max_var_pI_long$cell_line <- factor(x=max_var_pI_long$cell_line, levels=c("MCF10A", "SUM159", "MB231", "MCF7", "T47D"), ordered=TRUE)
+```
+Okay, this doesn't show up 'visibly' in the RStudio window but it does order the graph successfully, see?
+
+```{r}
+hm_plot <- max_var_pI_long %>%
+  ggplot(aes(x = cell_line, y = symbol)) +
+  geom_tile(aes(fill = pI)) +
+  theme(axis.text.y = element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        legend.position = "left") +
+  scale_fill_gradient(low="white", high="red")
+hm_plot
+```
+alright i have how to make it now how best to graph it all together?
+
+
+```{r}
+library(grid)
+grid.newpage()
+print(hm_plot, vp=viewport(x=0.3, y=0.4, width=0.6, height=0.7))
+print(dendro_gene_plot, vp=viewport(x=0.7, y=0.5, width=0.3, height=0.7))
+print(dendro_cell_plot, vp=viewport(x=0.35, y=0.85, width=0.4, height=0.3))
+```
+Well. Getting everything to look good together in conjunction is a bit of a struggle, isn't it? I keep editing the grid positions and sizing and can't get something I'm satisfied with, At least in this package. There's also the plotly package? Or heatmaply. But both of those look like they're designed for interactive graphs, which I definitely don't need and will introduce additional complexity. Or the good old fashioned solution of exporting separately since they have the same order then pasting them together.
+
+Or I just need to do base R heatmap, and work to make it match ggplot visually.
+```{r}
+pI_mat = as.matrix(max_var_pI[,5:9])
+rownames(pI_mat) = max_var_pI[,4]
+colnames(pI_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+
+```{r}
+heatmap(pI_mat, scale="none", cexCol = 0.8, labRow = "")
+```
+
+
