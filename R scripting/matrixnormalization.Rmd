@@ -20,13 +20,32 @@ pI_tab_simple = pI_tab[,c(1:4, 19, 26, 33, 40, 47)]
 
 ```{r c4}
 pI_tab_simple = pI_tab_simple %>%
-  separate(symbol, into=c("symbol", NA), sep = "_") %>% filter(!grepl('chrY|chrX', chrom))
+  separate(symbol, into=c("symbol", NA), sep = "_") %>%
+  filter(!grepl('chrY|chrX', chrom))
 ```
 
-Previously, did NA as 0. This time, remove all NA.
+```{r}
+pI_tab_simple_log10 = cbind(
+  pI_tab_simple[,1:4], log10(as.matrix(pI_tab_simple[,5:9])+1)
+  )
+```
+(log10 is +1 to avoid inducing na by attempting to do log(0). Pretty standard).
+```{r}
+pI_simple_znorm = pI_tab_simple_log10 %>%
+  rowwise() %>%
+  mutate(stdev = sd(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231),
+                    na.rm=TRUE),
+         meanpi = mean(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231),
+                       na.rm = TRUE),
+         pivar = var(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231),
+                     na.rm = TRUE)) %>%
+  ungroup()
+```
+(Need ungroup, otherwise is rowwise df and causes problems later)
+Remove genes with NA:
 
 ```{r c5}
-pI_tab_no_na = pI_tab_simple %>% 
+pI_no_na_znorm = pI_simple_znorm %>% 
             filter(!is.na(pI.MCF7) &
                      !is.na(pI.SUM159) &
                      !is.na(pI.MCF10A) &
@@ -35,124 +54,150 @@ pI_tab_no_na = pI_tab_simple %>%
 ```
 
 3006 genes
-z score normalize
-get information first
+Also try removing genes with 0s because may be inaccurate representation of tx
 
-```{r c6}
-pI_tab_log10 = cbind(
-  pI_tab_no_na[,1:4], log10(as.matrix(pI_tab_no_na[,5:9])+1)
-  )
-```
-(log10 is +1 to avoid inducing na by attempting to do log(0). Pretty standard).
-Okay, this time get variance before normalizing all the variance away
-
-```{r c7}
-pI_znorm = pI_tab_log10 %>%
-  rowwise() %>%
-  mutate(stdev = sd(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), meanpi = mean(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), pivar = var(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231))) %>%
-  filter(stdev!=0) #for anything that's all 0s
+```{r}
+pI_no_na_0_znorm = pI_no_na_znorm %>% 
+            filter(pI.MCF7 != 0 &
+                     pI.SUM159 != 0 &
+                     pI.MCF10A != 0 &
+                     pI.T47D != 0 &
+                     pI.MB231 != 0                   )
 ```
 
-```{r c8}
-pI_znorm$MCF7norm = (pI_znorm$pI.MCF7-pI_znorm$meanpi)/pI_znorm$stdev
-pI_znorm$SUM159norm = (pI_znorm$pI.SUM159-pI_znorm$meanpi)/pI_znorm$stdev
-pI_znorm$MCF10Anorm = (pI_znorm$pI.MCF10A-pI_znorm$meanpi)/pI_znorm$stdev
-pI_znorm$T47Dnorm = (pI_znorm$pI.T47D-pI_znorm$meanpi)/pI_znorm$stdev
-pI_znorm$MB231norm = (pI_znorm$pI.MB231-pI_znorm$meanpi)/pI_znorm$stdev
-```
+That puts us at 2483 genes. We'll leave NA as 0 out for now.
 
 ```{r c9}
-pI_znorm_top500 <- pI_znorm %>%
+simple_top500 <- pI_simple_znorm %>%
+  arrange(desc(pivar)) %>% 
+  slice(1:500)
+no_na_top500 <- pI_no_na_znorm %>%
+  arrange(desc(pivar)) %>% 
+  slice(1:500)
+no_na_0_top500 <- pI_no_na_0_znorm %>%
   arrange(desc(pivar)) %>% 
   slice(1:500)
 ```
 
+Okay, now z normalize. can I do this in an easier to read way than my earlier one??
+```{r}
+simple_top500 = simple_top500 %>%
+  rowwise() %>%
+  mutate(MCF7norm=((pI.MCF7-meanpi)/stdev),
+         SUM159norm=((pI.SUM159-meanpi)/stdev),
+         MCF10Anorm=((pI.MCF10A-meanpi)/stdev),
+         T47Dnorm=((pI.T47D-meanpi)/stdev),
+         MB231norm=((pI.MB231-meanpi)/stdev)) %>%
+  ungroup()
 
-```{r c10}
-pI_mat = as.matrix(pI_znorm_top500[,13:17])
-rownames(pI_mat) = pI_znorm_top500[[4]]
-colnames(pI_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+no_na_top500 = no_na_top500 %>%
+  rowwise() %>%
+  mutate(MCF7norm=((pI.MCF7-meanpi)/stdev),
+         SUM159norm=((pI.SUM159-meanpi)/stdev),
+         MCF10Anorm=((pI.MCF10A-meanpi)/stdev),
+         T47Dnorm=((pI.T47D-meanpi)/stdev),
+         MB231norm=((pI.MB231-meanpi)/stdev)) %>%
+  ungroup()
+
+no_na_0_top500 = no_na_0_top500 %>%
+  rowwise() %>%
+  mutate(MCF7norm=((pI.MCF7-meanpi)/stdev),
+         SUM159norm=((pI.SUM159-meanpi)/stdev),
+         MCF10Anorm=((pI.MCF10A-meanpi)/stdev),
+         T47Dnorm=((pI.T47D-meanpi)/stdev),
+         MB231norm=((pI.MB231-meanpi)/stdev)) %>%
+  ungroup()
 ```
 
-```{r c11}
-heatmap(pI_mat, scale="none", cexCol = 0.8, labRow = "", main = "No NA, row-normalized")
+Normalized variant:
+```{r}
+simple_mat = as.matrix(simple_top500[,13:17])
+rownames(simple_mat) = simple_top500[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_mat = as.matrix(no_na_top500[,13:17])
+rownames(no_na_mat) = no_na_top500[[4]]
+colnames(no_na_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_0_mat = as.matrix(no_na_0_top500[,13:17])
+rownames(no_na_0_mat) = no_na_0_top500[[4]]
+colnames(no_na_0_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
 ```
 
-What about without Znorm?
-```{r alt2c10}
-pI_mat2 = as.matrix(pI_znorm_top500[,5:9])
-rownames(pI_mat2) = pI_znorm_top500[[4]]
-colnames(pI_mat2) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+Not normalized variant:
+```{r}
+simple_mat_nn = as.matrix(simple_top500[,5:9])
+rownames(simple_mat) = simple_top500[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_mat_nn = as.matrix(no_na_top500[,5:9])
+rownames(no_na_mat) = no_na_top500[[4]]
+colnames(no_na_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_0_mat_nn = as.matrix(no_na_0_top500[,5:9])
+rownames(no_na_0_mat) = no_na_0_top500[[4]]
+colnames(no_na_0_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
 ```
 
-Ignore this one, I don't think it gives any useful insights.
-```{r alt2c11}
-heatmap(pI_mat2, scale="none", cexCol = 0.8, labRow = "", main="No NA, no Norm")
-```
-what.
-That didn't happen previously??? So what are the differences? In the previous graph I did NA as 0, because 
-I wasn't 100% sure what they meant biologically (not enough reads in the gene body yes, but are they necessarily all that different from genes with a score of 0? IDK). I also took the top 10% variance instead of the tope 500 variance, but I doubt that's affecting things much. Chunks 1-4 were identical, then handled NA. Log norm and calculating var were identical. I'm also testing this with the old filtering just in case.
 
-Let's do this with NA as 0. So...
+```{r}
+heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, row-normalized", na.rm = TRUE)
+```
+```{r}
+heatmap(simple_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, not normalized", na.rm = TRUE)
+```
+```{r}
+heatmap(no_na_mat, scale="none", cexCol = 0.8, labRow = "", main = "No NA, row-normalized", na.rm = TRUE)
+```
+
+```{r}
+heatmap(no_na_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No NA, not normalized", na.rm = TRUE)
+```
+
+```{r}
+heatmap(no_na_0_mat, scale="none", cexCol = 0.8, labRow = "", main = "No NA or 0, row-normalized", na.rm = TRUE)
+```
+
+```{r}
+heatmap(no_na_0_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No NA or 0, not normalized", na.rm = TRUE)
+```
+
+NA as 0? Not sure why the first two heatmaps are ignoring the na.rm argument but if I have to do it this way I'll do it this way.
 
 ```{r alt3c5}
-pI_tab_na_as_0 = pI_tab_simple %>% 
+pI_tab_na_as_0 = simple_top500 %>% 
             mutate(pI.MCF7 = replace_na(pI.MCF7, 0),
                    pI.SUM159 = replace_na(pI.SUM159, 0),
                    pI.MCF10A = replace_na(pI.MCF10A, 0),
                    pI.T47D = replace_na(pI.T47D, 0),
-                   pI.MB231 = replace_na(pI.MB231, 0)
+                   pI.MB231 = replace_na(pI.MB231, 0),
+                   MCF7norm = replace_na(MCF7norm, 0),
+                   SUM159norm = replace_na(SUM159norm, 0),
+                   MCF10Anorm = replace_na(MCF10Anorm, 0),
+                   T47Dnorm = replace_na(T47Dnorm, 0),
+                   MB231norm = replace_na(MB231norm, 0)
                    )
 ```
 
-
-```{r alt3c6}
-pI_tab_log10_3 = cbind(
-  pI_tab_na_as_0[,1:4], log10(as.matrix(pI_tab_na_as_0[,5:9])+1)
-  )
+Normalized variant:
+```{r}
+simple_mat = as.matrix(pI_tab_na_as_0[,13:17])
+rownames(simple_mat) = pI_tab_na_as_0[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
 ```
 
-```{r alt3c7}
-pI_znorm3 = pI_tab_log10_3 %>%
-  rowwise() %>%
-  mutate(stdev = sd(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), meanpi = mean(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), pivar = var(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231))) %>%
-  filter(stdev!=0)
+Not normalized variant:
+```{r}
+simple_mat_nn = as.matrix(pI_tab_na_as_0[,5:9])
+rownames(simple_mat) = pI_tab_na_as_0[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
 ```
 
-```{r alt3c8}
-pI_znorm3$MCF7norm = (pI_znorm3$pI.MCF7-pI_znorm3$meanpi)/pI_znorm3$stdev
-pI_znorm3$SUM159norm = (pI_znorm3$pI.SUM159-pI_znorm3$meanpi)/pI_znorm3$stdev
-pI_znorm3$MCF10Anorm = (pI_znorm3$pI.MCF10A-pI_znorm3$meanpi)/pI_znorm3$stdev
-pI_znorm3$T47Dnorm = (pI_znorm3$pI.T47D-pI_znorm3$meanpi)/pI_znorm3$stdev
-pI_znorm3$MB231norm = (pI_znorm3$pI.MB231-pI_znorm3$meanpi)/pI_znorm3$stdev
-```
-
-```{r alt3c9}
-pI_znorm_top500_3 <- pI_znorm3 %>%
-  arrange(desc(pivar)) %>% 
-  slice(1:500)
-```
-
-Now I need to hclust in both directions.
-
-```{r alt3c10}
-pI_mat3 = as.matrix(pI_znorm_top500_3[,13:17])
-rownames(pI_mat3) = pI_znorm_top500_3[[4]]
-colnames(pI_mat3) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
-```
-NA as 0, Znorm by rows:
-```{r alt3c11}
-heatmap(pI_mat3, scale="none", cexCol = 0.8, labRow = "", main = "NA as 0, row normalized")
+```{r}
+heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, row-normalized", na.rm = TRUE)
 ```
 ```{r}
-pI_mat4 = as.matrix(pI_znorm_top500_3[,5:9])
-rownames(pI_mat4) = pI_znorm_top500_3[[4]]
-colnames(pI_mat4) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
-```
-NA as 0 
-```{r}
-heatmap(pI_mat4, scale="none", cexCol = 0.8, labRow = "", main = "NA as 0, no norm")
-heatmap(pI_mat4, scale="row", cexCol = 0.8, labRow = "", main = "NA as 0, no norm")
+heatmap(simple_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, not normalized", na.rm = TRUE)
 ```
 
-
+Why isn't this quite the same as before? (pretty close tho). Oh, I bet I know what happened - previous version I turned NA to 0 before I calculated variance, this version I calculated variance first. Still.
