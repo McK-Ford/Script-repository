@@ -287,7 +287,9 @@ score_matrix_bigwig <- function(bed, bw, b=NA, a=NA, n=NA, bs=10,
   return(hist)
   }
 
-
+obj_name <- function(obj) {
+  deparse(substitute(obj))
+}
 
 
 
