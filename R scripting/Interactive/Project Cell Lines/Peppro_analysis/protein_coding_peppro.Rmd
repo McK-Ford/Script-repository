@@ -1,0 +1,236 @@
+---
+title: "Peppro noncoding portion?"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(biomaRt)
+```
+
+```{r}
+peppro_pIs_w_rank <- read.delim("C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/Peppro_analysis/peppro_pIs_w_rank.tsv")
+```
+
+```{r}
+peppro_wide <- peppro_pIs_w_rank |> 
+  pivot_wider(id_cols = c("chrom", "symbol", "strand"),
+              names_from = cell_line,
+              names_prefix = "pI_",
+              values_from = pI,
+              values_fill = NA
+              )
+```
+
+code help: https://support.bioconductor.org/p/124462/
+```{r}
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "https://useast.ensembl.org")
+```
+
+```{r}
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+```
+
+```{r}
+annotLookup <- getBM(
+  mart = mart,
+  attributes = c(
+    "hgnc_symbol",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = peppro_wide$symbol,
+  uniqueRows=TRUE)
+```
+
+```{r}
+peppro_anno <- merge(peppro_wide, annotLookup, by.x = "symbol",
+                     by.y = "hgnc_symbol", all = TRUE)
+```
+
+```{r}
+protein_coding <- peppro_anno |> 
+  filter(gene_biotype == "protein_coding")
+print("protein coding:")
+dim(protein_coding)
+```
+
+```{r}
+non_coding <- peppro_anno |> 
+  filter(gene_biotype != "protein_coding" & !is.na(gene_biotype))
+print("noncoding:")
+dim(non_coding)
+```
+
+```{r}
+no_anno <- peppro_anno |> 
+  filter(is.na(gene_biotype))
+print("no anno")
+dim(no_anno)
+```
+So what are these things I could not find an annotation for? ACsomelongnumber represents a solid 1800 of it, then there's many more hundreds of ALsomelongnumber and the like - at a glance, only things that jump out at me as *potential* real genes are AKAP2, AARS, APOPT1, ASNA1, DARS, a handful of CCDC and FAM and HIST proteins...A few others, but I'm not going to type all of them. I'd venture a guess that only maybe 50 genes there don't have orf, linc, or two letters then a long number in their signal, and I'm okay with throwing away that small handful for now.
+
+```{r rank order}
+setDT(protein_coding)
+protein_coding[, ':='(pI_ro_T47D=frank(pI_T47D, na.last="keep"), 
+                             pI_ro_MB231=frank(pI_MB231, na.last="keep"),
+                             pI_ro_SUM159=frank(pI_SUM159, na.last="keep"),
+                             pI_ro_MCF7=frank(pI_MCF7, na.last="keep"),
+                             pI_ro_MCF10A=frank(pI_MCF10A, na.last="keep"))]
+```
+
+
+```{r}
+protein_coding$rankdif_MCF7vsSUM <- protein_coding$pI_ro_MCF7 - protein_coding$pI_ro_SUM159
+protein_coding$rankdif_T47DvsMB231 <- protein_coding$pI_ro_T47D - protein_coding$pI_ro_MB231
+```
+
+```{r}
+protein_coding$absrankdif_MCF7vsSUM <- abs(protein_coding$rankdif_MCF7vsSUM)
+protein_coding$absrankdif_T47DvsMB231 <- abs(protein_coding$rankdif_T47DvsMB231)
+```
+
+```{r}
+write.table(protein_coding, file="protein_coding_peppro_withrankdif.txt", quote=FALSE, sep="\t", row.names = FALSE)
+```
+
+Now for clustering
+
+```{r take out X and Y}
+pI_tab_simple <- protein_coding |> 
+  filter(!grepl('chrY|chrX', chrom))
+```
+
+```{r}
+pI_tab_simple_log10 <- cbind(
+  pI_tab_simple[,1:3], log10(as.matrix(pI_tab_simple[,4:8]))
+  )
+```
+
+```{r}
+pI_simple_log10 <- pI_tab_simple_log10 |> 
+  rowwise() |> 
+  mutate(stdev = sd(c(pI_MCF7, pI_SUM159, pI_MCF10A, pI_T47D, pI_MB231),
+                    na.rm=TRUE),
+         meanpi = mean(c(pI_MCF7, pI_SUM159, pI_MCF10A, pI_T47D, pI_MB231),
+                       na.rm = TRUE),
+         pivar = var(c(pI_MCF7, pI_SUM159, pI_MCF10A, pI_T47D, pI_MB231),
+                     na.rm = TRUE)) |> 
+  ungroup()
+```
+(Need ungroup, otherwise is rowwise df and causes problems later)
+Remove genes with NA:
+
+```{r c5}
+pI_no_na <- pI_simple_log10 |>  
+            filter(!is.na(pI_MCF7) &
+                     !is.na(pI_SUM159) &
+                     !is.na(pI_MCF10A) &
+                     !is.na(pI_T47D) &
+                     !is.na(pI_MB231)                   )
+```
+
+4685 genes, not the 1k something I had previously
+Can always venn diagram too?
+
+```{r}
+pI_norm <- pI_no_na |> 
+  rowwise() |> 
+  mutate(MB231norm = (pI_MB231 - meanpi) / stdev,
+        MCF10Anorm = (pI_MCF10A - meanpi) / stdev,
+        MCF7norm = (pI_MCF7 - meanpi) / stdev,
+         SUM159norm = (pI_SUM159 - meanpi) / stdev,
+         T47Dnorm = (pI_T47D - meanpi) / stdev) |> 
+  ungroup()
+```
+
+Normalized matrix:
+```{r}
+simple_mat <- as.matrix(pI_norm[,12:16])
+rownames(simple_mat) <- pI_norm[[4]]
+colnames(simple_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+Not normalized matrix:
+```{r}
+simple_mat_nn <- as.matrix(pI_norm[,4:8])
+rownames(simple_mat) <- pI_norm[[4]]
+colnames(simple_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+
+```{r}
+heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "row-normalized (calculated)", na.rm = TRUE)
+```
+
+```{r}
+heatmap(simple_mat_nn, scale="row", cexCol = 0.8, labRow = "", main = "row-normalized (calculated)", na.rm = TRUE)
+```
+
+
+```{r}
+pI_tab_simple$MB231_tf <- !is.na(pI_tab_simple$pI_MB231)
+pI_tab_simple$MCF10A_tf <- !is.na(pI_tab_simple$pI_MCF10A)
+pI_tab_simple$MCF7_tf <- !is.na(pI_tab_simple$pI_MCF7)
+pI_tab_simple$SUM159_tf <- !is.na(pI_tab_simple$pI_SUM159)
+pI_tab_simple$T47D_tf <- !is.na(pI_tab_simple$pI_T47D)
+```
+
+
+```{r}
+library(venn)
+```
+
+```{r}
+tf_mat <- pI_tab_simple[,19:23]
+colnames(tf_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+
+```{r}
+pI_venn_peppro = venn(tf_mat, zcolor = "style", box = FALSE)
+```
+
+```{r}
+pdf(file = "venn_peppro.pdf", width = 15)
+pI_venn_peppro
+dev.off()
+```
+
+```{r}
+simple_top500 <- pI_no_na |> 
+  arrange(desc(pivar)) |>  
+  dplyr::slice(c(1:500))
+```
+
+```{r}
+pI_norm <- simple_top500 |> 
+  rowwise() |> 
+  mutate(MB231norm = (pI_MB231 - meanpi) / stdev,
+        MCF10Anorm = (pI_MCF10A - meanpi) / stdev,
+        MCF7norm = (pI_MCF7 - meanpi) / stdev,
+         SUM159norm = (pI_SUM159 - meanpi) / stdev,
+         T47Dnorm = (pI_T47D - meanpi) / stdev) |> 
+  ungroup()
+```
+
+Normalized matrix:
+```{r}
+simple_mat <- as.matrix(pI_norm[,12:16])
+rownames(simple_mat) <- pI_norm[[2]]
+colnames(simple_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+```{r}
+heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "row-normalized (calculated)", na.rm = TRUE)
+```
+
+Not normalized matrix:
+```{r}
+simple_mat <- as.matrix(pI_norm[,4:8])
+rownames(simple_mat) <- pI_norm[[2]]
+colnames(simple_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+```{r}
+heatmap(simple_mat, scale="row", cexCol = 0.8, labRow = "", main = "row-norm (function)", na.rm = TRUE)
+```
