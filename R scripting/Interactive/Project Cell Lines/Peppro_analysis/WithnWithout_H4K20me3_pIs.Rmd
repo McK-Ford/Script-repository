@@ -1,0 +1,351 @@
+---
+title: "Analysis of Cell lines w/ and w/out H4K20me3"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/PEPPRO_SE/"
+MB231_pI <- read.delim(
+  paste0(DIR, "MB231/QC_hg38/MB231_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+MCF7_pI <- read.delim(
+  paste0(DIR, "MCF7/QC_hg38/MCF7_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+SUM159_pI <- read.delim(
+  paste0(DIR, "SUM159/QC_hg38/SUM159_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+T47D_pI <- read.delim(
+  paste0(DIR, "T47D/QC_hg38/T47D_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+```
+
+```{r}
+tab_lst <- list(MB231 = MB231_pI,
+               MCF7 = MCF7_pI,
+               SUM159 = SUM159_pI,
+               T47D = T47D_pI)
+for (i in seq_along(tab_lst)) {
+  colnames(tab_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand")
+  tab_lst[[i]] = tab_lst[[i]] |>
+    filter(tab_lst[[i]][[5]] < 1000)
+  plus = tab_lst[[i]] |>
+    filter(tab_lst[[i]][[6]] == "+")
+  plus$end = plus$start + 2000
+  plus$start = plus$start - 2000
+  minus = tab_lst[[i]] |>
+    filter(tab_lst[[i]][[6]] == "-")
+  minus$start = minus$end - 2000
+  minus$end = minus$end + 2000
+  tab_lst[[i]] = rbind(plus, minus)
+}
+MB231 <- tab_lst[[1]]
+MCF7 <- tab_lst[[2]]
+SUM159 <- tab_lst[[3]] 
+T47D <- tab_lst[[4]] 
+```
+
+
+```{r}
+write.table(
+  MB231,
+  file = "MB231_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+write.table(
+  MCF7,
+  file = "MCF7_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+write.table(
+  SUM159,
+  file = "SUM159_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+write.table(
+  T47D,
+  file = "T47D_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+```
+
+Okay, now I take these files into bluehive to run bedtools intersect on them.
+Did bedtools intersect -a promoters -b peaks -c, which means keep all promoters, report number of hits in peaks. Now bring them back in...
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/Peppro_analysis/H4K20_connection_analysis/"
+MB231 <- read.delim(
+  paste0(DIR, "MB231_pI_MB231s.tsv"),
+  header = FALSE
+  )
+MCF7 <- read.delim(
+  paste0(DIR, "MCF7_pI_MCF7s.tsv"),
+  header = FALSE
+  )
+SUM159 <- read.delim(
+  paste0(DIR, "SUM159_pI_SUM159s.tsv"),
+  header = FALSE
+  )
+T47D <- read.delim(
+  paste0(DIR, "T47D_pI_T47Ds.tsv"),
+  header = FALSE
+  )
+```
+
+```{r}
+H4K20me3POS_lst <- list(MB231 = MB231,
+               MCF7 = MCF7,
+               SUM159 = SUM159,
+               T47D = T47D)
+H4K20me3NEG_lst <- list(MB231 = MB231,
+               MCF7 = MCF7,
+               SUM159 = SUM159,
+               T47D = T47D)
+for (i in seq_along(H4K20me3POS_lst)) {
+  colnames(H4K20me3POS_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand", "score")
+ H4K20me3POS_lst[[i]] = H4K20me3POS_lst[[i]] |>
+    filter(H4K20me3POS_lst[[i]][[7]] > 0)
+   print(
+    paste0(
+      "Length of POS ",
+      names(H4K20me3POS_lst)[[i]],
+      " is: ",
+      dim(H4K20me3POS_lst[[i]])[1]
+      )
+    )
+     colnames(H4K20me3NEG_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand", "score")
+  H4K20me3NEG_lst[[i]] = H4K20me3NEG_lst[[i]] |>
+    filter(H4K20me3NEG_lst[[i]][[7]] == 0)
+  print(
+    paste0(
+      "Length of NEG ",
+      names(H4K20me3NEG_lst)[[i]],
+      " is: ",
+      dim(H4K20me3NEG_lst[[i]])[1]
+      )
+    )
+}
+
+MB231POS <- H4K20me3POS_lst[[1]]
+MCF7POS <- H4K20me3POS_lst[[2]]
+SUM159POS <- H4K20me3POS_lst[[3]] 
+T47DPOS <- H4K20me3POS_lst[[4]] 
+
+MB231NEG <- H4K20me3NEG_lst[[1]]
+MCF7NEG <- H4K20me3NEG_lst[[2]]
+SUM159NEG <- H4K20me3NEG_lst[[3]] 
+T47DNEG <- H4K20me3NEG_lst[[4]] 
+```
+So in general, most genes don't have an intersecting H4K20me3 peak.
+
+```{r}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2, hjust=0.5),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+```
+
+
+```{r}
+MCF7_plot = ggplot() +
+  stat_ecdf(geom="step", data = MCF7POS, aes(pI), color = "blue") +
+  stat_ecdf(geom="step", data = MCF7NEG, aes(pI), color = "red") + mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma())
+MCF7_plot
+```
+Oh, nice. Can finetune.
+
+```{r}
+colors <- c("H4K20me3 Positive" = "blue", "H4K20me3 Negative" = "red")
+MCF7_plot <- ggplot() +
+  stat_ecdf(geom="step", data = MCF7POS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = MCF7NEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("MCF7") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())
+MCF7_plot
+```
+I did try log2 because Paula had mentioned it might look more obvious, but I didn't see a difference so am currently keeping the log10 graph.
+
+```{r}
+MB231_plot <- ggplot() +
+  stat_ecdf(geom="step", data = MB231POS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = MB231NEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("MB231") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())
+MB231_plot
+
+SUM159_plot <- ggplot() +
+  stat_ecdf(geom="step", data = SUM159POS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = SUM159NEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("SUM159") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())
+SUM159_plot
+
+T47D_plot <- ggplot() +
+  stat_ecdf(geom="step", data = T47DPOS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = T47DNEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("T47D") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())
+T47D_plot
+```
+
+What about p-values?? Is this significant?
+Checking https://genomebiology.biomedcentral.com/articles/10.1186/s13059-016-0984-2 looks like mann-whitney u. Makes sense, testing for a difference in the median. Some other papers I'm finding use the kolmogorov - smirnov test but that seems to be less strict than mann-whitney (diff in distribution, not just median), so we'll err on the side of overly strict for now.
+
+alternative hypothesis is two-sided test (default, do not need to specify), paired is false, let's say yes for confidence interval.
+
+```{r}
+wilcox.test(x = MCF7POS$pI, y = MCF7NEG$pI, paired = FALSE,
+            conf.int = TRUE)
+
+```
+What is the continuity correction? Indicates when you are approximating a discrete distribution via a continous one? Oh, I see, like coin flips. This is not that situation, so I can set that to false.
+Oh and I see with additional research, kolmogorov-smirnov literally compares CDFs so that's one potential reason to do that. If I decide to do it, function is ks.test.
+
+```{r}
+wilcox.test(x = MCF7POS$pI, y = MCF7NEG$pI, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+
+```
+Not a big deal, really, reduced the confidence interval by maybe a couple hundred thousandths. But MCF7 should be strongest test as it has the most H4K20pos promoters - can the others hold up?
+
+```{r}
+wilcox.test(x = MB231POS$pI, y = MB231NEG$pI, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+wilcox.test(x = SUM159POS$pI, y = SUM159NEG$pI, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+wilcox.test(x = T47DPOS$pI, y = T47DNEG$pI, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+```
+Interesting that T47D is significant and MB231 isn't, since MB231 had a lot more H4K20me3 pos than T47D did. Also, why does T47D have a negative change and MCF7 a positive one? I double-checked, I didn't accidentally switch the T47D tables or something silly like that.
+
+So anyway, add p value to the plots? Need to look into further for proper display (probably will need to change these graphs for publishing anyway) so for now we'll just do element.text
+```{r}
+MCF7_plot <- ggplot() +
+  stat_ecdf(geom="step", data = MCF7POS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = MCF7NEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("MCF7") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank()) +
+  annotate("text", x = 0.8, y = 0.2, label = "p = 2.2e-16")
+MCF7_plot
+
+MB231_plot <- ggplot() +
+  stat_ecdf(geom="step", data = MB231POS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = MB231NEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("MB231") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())  +
+  annotate("text", x = 0.8, y = 0.2, label = "p = 7.6e-02")
+MB231_plot
+
+SUM159_plot <- ggplot() +
+  stat_ecdf(geom="step", data = SUM159POS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = SUM159NEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("SUM159") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())  +
+  annotate("text", x = 0.8, y = 0.2, label = "p = 7.1e-05")
+SUM159_plot
+
+T47D_plot <- ggplot() +
+  stat_ecdf(geom="step", data = T47DPOS, aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = T47DNEG, aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle("T47D") +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())  +
+  annotate("text", x = 0.6, y = 0.2, label = "p = 1.6e-02")
+T47D_plot
+```
+
+```{r}
+pdf(file = "with_without_H4K20me3_mergedABs.pdf", width = 7)
+MCF7_plot
+T47D_plot
+MB231_plot
+SUM159_plot
+dev.off()
+```
+
+
+
+
+
