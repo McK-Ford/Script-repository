@@ -133,7 +133,7 @@ score_matrix <- function( bed, bam, b = NA, a = NA, n = NA, method, bs = 10,
         test <- GRanges(
           seqnames = chrs[[i]],
           ranges = IRanges(
-            start = long_hist[[3]],
+            start = ( long_hist[[3]] + 1 ),
             end = long_hist[[3]] + bs
             ),
           strand = strandvec
@@ -325,13 +325,16 @@ score_matrix_bigwig <- function( bed, bw, b = NA, a = NA, n = NA, bs = 10,
     verbose <- TRUE
   }
   chrs <- list_chrs()
-  # chrs = list("chr14", "chr19")
+  if ( debug ) {
+    chrs <- list( "chr19", "chr22" ) #two small chrs - some errors only show up w/ more than one
+    print("Running in debug mode" )
+  }
   tmp_list <- chrs
   tmp_ref_list <- chrs
   for ( i in seq_along( chrs ) ) {
     bw_sub <- import(
       bw, selection = GenomicSelection(
-        "hg38", chrom=chrs[[i]], colnames="score"
+        "hg38", chrom = chrs[[i]], colnames = "score"
         )
       )
     if ( verbose ) {
@@ -350,7 +353,7 @@ score_matrix_bigwig <- function( bed, bw, b = NA, a = NA, n = NA, bs = 10,
     test <- GRanges(
       seqnames = chrs[[i]],
       ranges = IRanges(
-        start = long_hist[[3]], end = long_ends[[3]]
+        start = ( long_hist[[3]] + 1 ), end = long_ends[[3]]
         ),
       strand = strandvec
       ) 
@@ -363,6 +366,7 @@ score_matrix_bigwig <- function( bed, bw, b = NA, a = NA, n = NA, bs = 10,
         "chrom", "bs", "be", "bin_w", "star", "score",
         names( regions_w_raw_scores[ , 7:12 ] )
         )
+      regions_w_raw_scores$bs = regions_w_raw_scores$bs - 1
       gs_before_bs <-  pmax(
         ( regions_w_raw_scores$start - regions_w_raw_scores$bs ), 0 
         )
@@ -376,17 +380,17 @@ score_matrix_bigwig <- function( bed, bw, b = NA, a = NA, n = NA, bs = 10,
       setDT( regions_w_raw_scores ) 
       tmp1 <- regions_w_raw_scores[ ,
                                     head( .SD, 1 ),
-                                    by=.( ID, start ),
-                                    .SDcols=c( "seqnames", "end", "strand" )
+                                    by=.( ID ),
+                                    .SDcols=c( "start","seqnames", "end", "strand" )
                                     ]
       tmp2 <- regions_w_raw_scores[ ,
                                     list(
                                       ( sum( adjusted_score ) / sum( adjustor )
                                         )
                                       ),
-                                    by = .( start )
+                                    by = .( ID )
                                     ]
-      summarized_regions_w_raw_scores <- cbind( tmp1, tmp2 )
+      summarized_regions_w_raw_scores <- merge( tmp1, tmp2, by = "ID", all = TRUE )
       tmp_list[[i]] <- summarized_regions_w_raw_scores
   }
   hist <-  do.call( rbind, tmp_list ) #collapse into one matrix
