@@ -1,0 +1,203 @@
+---
+title: "hclust"
+output: html_notebook
+---
+
+```{r c1}
+library(tidyverse)
+library(data.table)
+```
+
+```{r c2}
+pI_tab <- read.delim(
+  "C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V3/project_cell_lines_pI.txt"
+  )
+```
+
+```{r c3}
+pI_tab_simple = pI_tab[,c(1:4, 19, 26, 33, 40, 47)]
+```
+
+```{r c4}
+pI_tab_simple = pI_tab_simple %>%
+  separate(symbol, into=c("symbol", NA), sep = "_") %>%
+  filter(!grepl('chrY|chrX', chrom))
+```
+
+```{r}
+pI_tab_simple_log10 = cbind(
+  pI_tab_simple[,1:4], log10(as.matrix(pI_tab_simple[,5:9])+1)
+  )
+```
+(log10 is +1 to avoid inducing na by attempting to do log(0). Pretty standard).
+```{r}
+pI_simple_znorm = pI_tab_simple_log10 %>%
+  rowwise() %>%
+  mutate(stdev = sd(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231),
+                    na.rm=TRUE),
+         meanpi = mean(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231),
+                       na.rm = TRUE),
+         pivar = var(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231),
+                     na.rm = TRUE)) %>%
+  ungroup()
+```
+(Need ungroup, otherwise is rowwise df and causes problems later)
+Remove genes with NA:
+
+```{r c5}
+pI_no_na_znorm = pI_simple_znorm %>% 
+            filter(!is.na(pI.MCF7) &
+                     !is.na(pI.SUM159) &
+                     !is.na(pI.MCF10A) &
+                     !is.na(pI.T47D) &
+                     !is.na(pI.MB231)                   )
+```
+
+3006 genes
+Also try removing genes with 0s because may be inaccurate representation of tx
+
+```{r}
+pI_no_na_0_znorm = pI_no_na_znorm %>% 
+            filter(pI.MCF7 != 0 &
+                     pI.SUM159 != 0 &
+                     pI.MCF10A != 0 &
+                     pI.T47D != 0 &
+                     pI.MB231 != 0                   )
+```
+
+That puts us at 2483 genes. We'll leave NA as 0 out for now.
+
+```{r c9}
+simple_top500 <- pI_simple_znorm %>%
+  arrange(desc(pivar)) %>% 
+  slice(1:500)
+no_na_top500 <- pI_no_na_znorm %>%
+  arrange(desc(pivar)) %>% 
+  slice(1:500)
+no_na_0_top500 <- pI_no_na_0_znorm %>%
+  arrange(desc(pivar)) %>% 
+  slice(1:500)
+```
+
+Okay, now z normalize. can I do this in an easier to read way than my earlier one??
+```{r}
+simple_top500 = simple_top500 %>%
+  rowwise() %>%
+  mutate(MCF7norm=((pI.MCF7-meanpi)/stdev),
+         SUM159norm=((pI.SUM159-meanpi)/stdev),
+         MCF10Anorm=((pI.MCF10A-meanpi)/stdev),
+         T47Dnorm=((pI.T47D-meanpi)/stdev),
+         MB231norm=((pI.MB231-meanpi)/stdev)) %>%
+  ungroup()
+
+no_na_top500 = no_na_top500 %>%
+  rowwise() %>%
+  mutate(MCF7norm=((pI.MCF7-meanpi)/stdev),
+         SUM159norm=((pI.SUM159-meanpi)/stdev),
+         MCF10Anorm=((pI.MCF10A-meanpi)/stdev),
+         T47Dnorm=((pI.T47D-meanpi)/stdev),
+         MB231norm=((pI.MB231-meanpi)/stdev)) %>%
+  ungroup()
+
+no_na_0_top500 = no_na_0_top500 %>%
+  rowwise() %>%
+  mutate(MCF7norm=((pI.MCF7-meanpi)/stdev),
+         SUM159norm=((pI.SUM159-meanpi)/stdev),
+         MCF10Anorm=((pI.MCF10A-meanpi)/stdev),
+         T47Dnorm=((pI.T47D-meanpi)/stdev),
+         MB231norm=((pI.MB231-meanpi)/stdev)) %>%
+  ungroup()
+```
+
+Normalized variant:
+```{r}
+simple_mat = as.matrix(simple_top500[,13:17])
+rownames(simple_mat) = simple_top500[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_mat = as.matrix(no_na_top500[,13:17])
+rownames(no_na_mat) = no_na_top500[[4]]
+colnames(no_na_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_0_mat = as.matrix(no_na_0_top500[,13:17])
+rownames(no_na_0_mat) = no_na_0_top500[[4]]
+colnames(no_na_0_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+
+Not normalized variant:
+```{r}
+simple_mat_nn = as.matrix(simple_top500[,5:9])
+rownames(simple_mat) = simple_top500[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_mat_nn = as.matrix(no_na_top500[,5:9])
+rownames(no_na_mat) = no_na_top500[[4]]
+colnames(no_na_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+
+no_na_0_mat_nn = as.matrix(no_na_0_top500[,5:9])
+rownames(no_na_0_mat) = no_na_0_top500[[4]]
+colnames(no_na_0_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+
+
+```{r}
+heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, row-normalized", na.rm = TRUE)
+```
+```{r}
+heatmap(simple_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, not normalized", na.rm = TRUE)
+```
+```{r}
+heatmap(no_na_mat, scale="none", cexCol = 0.8, labRow = "", main = "No NA, row-normalized", na.rm = TRUE)
+```
+
+```{r}
+heatmap(no_na_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No NA, not normalized", na.rm = TRUE)
+```
+
+```{r}
+heatmap(no_na_0_mat, scale="none", cexCol = 0.8, labRow = "", main = "No NA or 0, row-normalized", na.rm = TRUE)
+```
+
+```{r}
+heatmap(no_na_0_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No NA or 0, not normalized", na.rm = TRUE)
+```
+
+NA as 0? Not sure why the first two heatmaps are ignoring the na.rm argument but if I have to do it this way I'll do it this way.
+
+```{r alt3c5}
+pI_tab_na_as_0 = simple_top500 %>% 
+            mutate(pI.MCF7 = replace_na(pI.MCF7, 0),
+                   pI.SUM159 = replace_na(pI.SUM159, 0),
+                   pI.MCF10A = replace_na(pI.MCF10A, 0),
+                   pI.T47D = replace_na(pI.T47D, 0),
+                   pI.MB231 = replace_na(pI.MB231, 0),
+                   MCF7norm = replace_na(MCF7norm, 0),
+                   SUM159norm = replace_na(SUM159norm, 0),
+                   MCF10Anorm = replace_na(MCF10Anorm, 0),
+                   T47Dnorm = replace_na(T47Dnorm, 0),
+                   MB231norm = replace_na(MB231norm, 0)
+                   )
+```
+
+Normalized variant:
+```{r}
+simple_mat = as.matrix(pI_tab_na_as_0[,13:17])
+rownames(simple_mat) = pI_tab_na_as_0[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+
+Not normalized variant:
+```{r}
+simple_mat_nn = as.matrix(pI_tab_na_as_0[,5:9])
+rownames(simple_mat) = pI_tab_na_as_0[[4]]
+colnames(simple_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+
+```{r}
+heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, row-normalized", na.rm = TRUE)
+```
+```{r}
+heatmap(simple_mat_nn, scale="none", cexCol = 0.8, labRow = "", main = "No exclusions, not normalized", na.rm = TRUE)
+```
+
+Why isn't this quite the same as before? (pretty close tho). Oh, I bet I know what happened - previous version I turned NA to 0 before I calculated variance, this version I calculated variance first. Still.

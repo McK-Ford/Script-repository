@@ -1,0 +1,50 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+pI <- read.delim("C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V3/project_cell_lines_pI.txt")
+```
+
+```{r}
+pI <- pI |> 
+  rowwise() |> 
+  filter(
+    sum(pI.MCF7, pI.MCF10A, pI.MB231, pI.T47D, pI.SUM159, na.rm = TRUE) > 0) |>
+  ungroup() |> 
+  select(-c(5, 13:18, 20:25, 27:32, 34:39, 41:46))
+```
+the filter line here gets rid of any gene that's only NA and 0 values.
+
+```{r}
+pI$MB231_tf <- !is.na(pI$pI.MB231)
+pI$MCF10A_tf <- !is.na(pI$pI.MCF10A)
+pI$MCF7_tf <- !is.na(pI$pI.MCF7)
+pI$SUM159_tf <- !is.na(pI$pI.SUM159)
+pI$T47D_tf <- !is.na(pI$pI.T47D)
+```
+
+```{r}
+library(venn)
+```
+
+```{r}
+tf_mat <- pI[,17:21]
+colnames(tf_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+```{r}
+pI_venn = venn(tf_mat, zcolor = "style", box = FALSE)
+```
+
+```{r}
+pdf(file = "vennV3.pdf", width = 15)
+pI_venn
+dev.off()
+```
