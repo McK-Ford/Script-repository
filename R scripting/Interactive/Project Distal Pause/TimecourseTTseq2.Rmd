@@ -1,0 +1,325 @@
+---
+title: "Timecourse TTseq2"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r source, message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+```
+
+```{r genes}
+prox <- read.delim( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/prox_tss_order.bed",
+  header = FALSE
+  )
+dist <- read.delim(
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/dist_cgi_order.bed",
+  header = FALSE
+  )
+```
+
+
+Because I was dumb and took the labels off when I made these originally:
+```{r labelling}
+gene_info <- rbind( prox, dist )
+colnames( gene_info ) <- c( "uniq_id", "chrom", "cpg_s", "cpg_e",
+                            "cpg_num", "gene_s", "gene_e",
+                            "strand", "name", "ex2in", "gene_l",
+                            "cpg_l", "TSS_3prime", "prime5_TSS",
+                            "TSS_ex", "TSS_skew", "CGI3_skew",
+                            "TES_skew", "CGI5_skew", "x2in_skew",
+                            "simple_skew_class")
+```
+
+Bed filtering 1
+```{r}
+gene_info_p <- gene_info |> filter( strand == "+" & chrom != "chrX" )
+gene_info_m <- gene_info |> filter( strand == "-" & chrom != "chrX" )
+```
+
+Let's skip the scaled stuff for now. I'm not sure what josh/wendy did to make them match up, because I've checked the numbers, I've literally counted reads in IGV. So all I want is TSS-centered and 3' CGI centered.
+
+```{r}
+TSS_CGI_E_prox_p <- gene_info_p |>
+  filter(simple_skew_class=="Prox") |> 
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_E_prox_m <- gene_info_m |>
+  filter(simple_skew_class=="Prox") |> 
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+
+TSS_CGI_E_dist_p <- gene_info_p |>
+  filter(simple_skew_class=="Dist") |> 
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_E_dist_m <- gene_info_m |>
+  filter(simple_skew_class=="Dist") |> 
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+```
+
+```{r}
+tab_ls <- list(
+  TSS_CGI_E_prox_p,
+  TSS_CGI_E_prox_m,
+  TSS_CGI_E_dist_p,
+  TSS_CGI_E_dist_m
+)
+for (i in seq_along( tab_ls ) ) {
+  colnames( tab_ls[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+```
+
+```{r}
+TSS_tab <- list(rbind(tab_ls[[1]], tab_ls[[2]]), rbind(tab_ls[[3]], tab_ls[[4]]))
+tmp_ls <- tab_ls
+tmp_ls[[1]]$start <- tmp_ls[[1]]$end - 1
+tmp_ls[[1]]$end <- tmp_ls[[1]]$start + 1
+tmp_ls[[3]]$start <- tmp_ls[[3]]$end - 1
+tmp_ls[[4]]$end <- tmp_ls[[4]]$start + 1
+CGI_tab <- list(rbind(tmp_ls[[1]], tmp_ls[[2]]), rbind(tmp_ls[[3]], tmp_ls[[4]]))
+```
+
+```{r bws}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE173374_Polenkowski_2021_HEK293T_TTseq/Bigwigs/"
+BWs <- list(
+  paste0(
+    DIR,
+    "GSM6257288_TT-seq_shCtrl_10min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257289_TT-seq_shCtrl_20min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257290_TT-seq_shCtrl_30min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257291_TT-seq_shCtrl_40min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257292_TT-seq_shTHOC5_10min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257293_TT-seq_shTHOC5_20min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257294_TT-seq_shTHOC5_30min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257295_TT-seq_shTHOC5_40min.bigwig"
+    )
+)
+```
+
+```{r}
+TSS_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+for ( bed in seq_along( TSS_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    TSS_LoL[[bed]][[bw]] <- score_matrix(
+      bed = TSS_tab[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+```{r}
+CGI_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+for ( bed in seq_along( CGI_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    CGI_LoL[[bed]][[bw]] <- score_matrix(
+      bed = CGI_tab[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+
+```{r}
+TSS_LoL2 <- TSS_LoL
+CGI_LoL2 <- CGI_LoL
+for ( bed in seq_along( TSS_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+        long_tab <- melt(TSS_LoL2[[bed]][[bw]], na.rm=TRUE, id.vars = c("uniq_id", "chrom", "start", "end", "score", "strand"))
+    TSS_LoL2[[bed]][[bw]] <- long_tab[, .(mean_score = mean(value)), by = list(variable)]
+    TSS_LoL2[[bed]][[bw]]$site <- "TSS"
+    TSS_LoL2[[bed]][[bw]]$variable <- as.numeric(TSS_LoL2[[bed]][[bw]]$variable)
+  }
+}
+
+for ( bed in seq_along( CGI_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+        long_tab <- melt(CGI_LoL2[[bed]][[bw]], na.rm=TRUE, id.vars = c("uniq_id", "chrom", "start", "end", "score", "strand"))
+    CGI_LoL2[[bed]][[bw]] <- long_tab[, .(mean_score = mean(value)), by = list(variable)]
+    CGI_LoL2[[bed]][[bw]]$site <- "CGI"
+    CGI_LoL2[[bed]][[bw]]$variable <- as.numeric(CGI_LoL2[[bed]][[bw]]$variable)
+  }
+}
+```
+
+```{r}
+prox_tss <- TSS_LoL2[[1]]
+dist_tss <- TSS_LoL2[[2]]
+
+prox_cgi <- CGI_LoL2[[1]]
+dist_cgi <- CGI_LoL2[[2]]
+```
+
+```{r}
+for (i in seq_along(prox_tss)){ prox_tss[[i]]$class <- "prox" }
+for (i in seq_along(dist_tss)){ dist_tss[[i]]$class <- "dist" }
+for (i in seq_along(prox_cgi)){ prox_cgi[[i]]$class <- "prox" }
+for (i in seq_along(dist_cgi)){ dist_cgi[[i]]$class <- "dist" }
+```
+
+```{r}
+ctrl10tss <- rbind(prox_tss[[1]], dist_tss[[1]])
+ctrl10tss$time <- 10
+
+ctrl10cgi <- rbind(prox_cgi[[1]], dist_cgi[[1]])
+ctrl10cgi$time <- 10
+
+ctrl20tss <- rbind(prox_tss[[2]], dist_tss[[2]])
+ctrl20tss$time <- 20
+
+ctrl20cgi <- rbind(prox_cgi[[2]], dist_cgi[[2]])
+ctrl20cgi$time <- 20
+
+ctrl30tss <- rbind(prox_tss[[3]], dist_tss[[3]])
+ctrl30tss$time <- 30
+
+ctrl30cgi <- rbind(prox_cgi[[3]], dist_cgi[[3]])
+ctrl30cgi$time <- 30
+
+ctrl40tss <- rbind(prox_tss[[4]], dist_tss[[4]])
+ctrl40tss$time <- 40
+
+ctrl40cgi <- rbind(prox_cgi[[4]], dist_cgi[[4]])
+ctrl40cgi$time <- 40
+
+ctrltss <- rbind(ctrl10tss, ctrl20tss, ctrl30tss, ctrl40tss)
+ctrltss$condition <- "ctrl"
+
+ctrlcgi <- rbind(ctrl10cgi, ctrl20cgi, ctrl30cgi, ctrl40cgi)
+ctrlcgi$condition <- "ctrl"
+
+```
+
+```{r}
+thoc510tss <- rbind(prox_tss[[5]], dist_tss[[5]])
+thoc510tss$time <- 10
+
+thoc510cgi <- rbind(prox_cgi[[5]], dist_cgi[[5]])
+thoc510cgi$time <- 10
+
+thoc520tss <- rbind(prox_tss[[6]], dist_tss[[6]])
+thoc520tss$time <- 20
+
+thoc520cgi <- rbind(prox_cgi[[6]], dist_cgi[[6]])
+thoc520cgi$time <- 20
+
+thoc530tss <- rbind(prox_tss[[7]], dist_tss[[7]])
+thoc530tss$time <- 30
+
+thoc530cgi <- rbind(prox_cgi[[7]], dist_cgi[[7]])
+thoc530cgi$time <- 30
+
+thoc540tss <- rbind(prox_tss[[8]], dist_tss[[8]])
+thoc540tss$time <- 40
+
+thoc540cgi <- rbind(prox_cgi[[8]], dist_cgi[[8]])
+thoc540cgi$time <- 40
+
+thoc5tss <- rbind(thoc510tss, thoc520tss, thoc530tss, thoc540tss)
+thoc5tss$condition <- "thoc5"
+
+thoc5cgi <- rbind(thoc510cgi, thoc520cgi, thoc530cgi, thoc540cgi)
+thoc5cgi$condition <- "thoc5"
+
+```
+
+```{r}
+tss <- rbind(ctrltss, thoc5tss)
+cgi <- rbind(ctrlcgi, thoc5cgi)
+```
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+geom_tt_tss <- tss |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black")
+geom_tt_tss
+```
+...what.
+
+```{r}
+geom_tt_tss2 <- tss |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = as.character(time))) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq") +
+  facet_wrap(~condition) +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black")
+geom_tt_tss2
+```
+
+```{r}
+geom_tt_cgi <- cgi |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="cgi_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black")
+geom_tt_cgi
+```
+Well that raises a lot more questions than it answers... I just double checked, everything is what I think it is.
+
+Ohhh wait wait wait. Stop paying attention to the overall shape. So. Thoc5 is supposed to be a r-loop resolver. R-loops are theoretically lower where skew is lower. Low skew in prox. Prox thoc5 ko is lower than control, while dist is higher than control!!! Tss harder to observe. dist, thoc5 ko always higher than control, same as high skew at 3' cgi result, but prox also higher than control at 10 min, then can't say after that as it 'flattens out' so lower in some spots higher in others.
