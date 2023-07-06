@@ -1,0 +1,153 @@
+---
+title: "Hockey sticks, rank dif, and clustering"
+output: html_notebook
+---
+
+```{r setup}
+#source("~/Script repository/R scripting/My_Useful_Fns.R")#02/01/2022 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/My_Useful_Fns.R
+library(tidyverse)
+library(data.table)
+pI_tab_wide <- read.delim("~/Script repository/R scripting/Interactive/Project Cell Lines/Peppro_analysis/peppro_pIs_w_rank.tsv")
+```
+
+```{r subsets}
+top_10perc <- pI_tab_wide |>
+  filter(!grepl('chrY|chrX', chrom)) |>
+  filter(pI_SUM159 >= quantile(pI_SUM159, 0.9, na.rm = TRUE) |
+         pI_T47D >= quantile(pI_T47D, 0.9, na.rm = TRUE) |
+         pI_MB231 >= quantile(pI_MB231, 0.9, na.rm = TRUE) |
+         pI_MCF7 >= quantile(pI_MCF7, 0.9, na.rm = TRUE) |
+         pI_MCF10A >= quantile(pI_MCF10A, 0.9, na.rm = TRUE))
+```
+That's 2844.
+
+                                                                                                     
+```{r}
+top_10perc_log10 <- cbind(
+  top_10perc[,1:5], log10(as.matrix(top_10perc[,6:10])), top_10perc[,11:15]
+  )
+```
+Will have basically nothing if I remove NA
+
+```{r}
+top_10perc_log10 <- top_10perc_log10 |> 
+  rowwise() |> 
+  mutate(stdev = sd(c(pI_MCF7, pI_SUM159, pI_MCF10A, pI_T47D, pI_MB231),
+                    na.rm=TRUE),
+         meanpi = mean(c(pI_MCF7, pI_SUM159, pI_MCF10A, pI_T47D, pI_MB231),
+                       na.rm = TRUE)) |> 
+  ungroup()
+```
+(Need ungroup, otherwise is rowwise df and causes problems later)
+
+```{r}
+pI_norm <- top_10perc_log10 |> 
+  rowwise() |> 
+  mutate(MB231norm = (pI_MB231 - meanpi) / stdev,
+        MCF10Anorm = (pI_MCF10A - meanpi) / stdev,
+        MCF7norm = (pI_MCF7 - meanpi) / stdev,
+         SUM159norm = (pI_SUM159 - meanpi) / stdev,
+         T47Dnorm = (pI_T47D - meanpi) / stdev) |> 
+  ungroup()
+```
+
+Normalized matrix:
+```{r}
+simple_mat <- as.matrix(pI_norm[,18:22])
+rownames(simple_mat) <- pI_norm[[4]]
+colnames(simple_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+```{r}
+hm1 <- heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "pI clustering, row norm, (n=2844)", na.rm = TRUE, na.color="black")
+```
+Oh I see what the problem is. Anything with only one gene with signal can't calculate stdev/mean, so that column is turned into NA, making every normalized column for that gene a NA.
+
+And you can't calc a distance matrix with rows that have only one real value.
+
+So how do I filter to 'at least 2 non-NA values?'
+
+https://groups.google.com/g/r-help-archive/c/biHWpmFeWoM?pli=1
+"The error appears to be a result of the missing values yielded by the
+dist() function on your matrix.
+See https://stat.ethz.ch/pipermail/r-help/2009-July/204443.html."
+
+True is worth 1 and False is 0...
+
+
+```{r}
+pI_norm <- top_10perc_log10 |> 
+  rowwise() |> 
+  mutate(MB231norm = (pI_MB231 - meanpi) / stdev,
+        MCF10Anorm = (pI_MCF10A - meanpi) / stdev,
+        MCF7norm = (pI_MCF7 - meanpi) / stdev,
+         SUM159norm = (pI_SUM159 - meanpi) / stdev,
+         T47Dnorm = (pI_T47D - meanpi) / stdev) |>
+  ungroup() |> 
+  filter(
+    2 <= (as.numeric(!is.na(pI_MB231)) +
+      as.numeric(!is.na(pI_MCF10A)) +
+      as.numeric(!is.na(pI_MCF7)) +
+      as.numeric(!is.na(pI_SUM159)) +
+      as.numeric(!is.na(pI_T47D)))
+    ) |>
+  ungroup()
+```
+Apparently if I don't as.numeric each one it will only take the numeric value of the final comparison because it's stupid like that, instead of everything added together. You can calc TRUE + TRUE but for some reason it doesn't work here.
+1698 genes.
+
+
+Normalized matrix:
+```{r}
+simple_mat <- as.matrix(pI_norm[,18:22])
+rownames(simple_mat) <- pI_norm[[4]]
+colnames(simple_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+```{r}
+hm1 <- heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "pI clustering, row norm, (n=2844)", na.rm = TRUE, na.color="black")
+```
+Ugh, I really did think that would fix it...I'm telling it explicitly to remove NAs.
+
+```{r}
+test = as.matrix(dist(simple_mat))
+test2 = as.matrix(dist(t(simple_mat)))
+foo = unique(is.na(test))
+```
+Huh. maybe I have some genes I can't compare? See the TRUE values in foo.
+```{r}
+hm1 <- heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "pI clustering, row norm, (n=2844)", na.rm = TRUE, Rowv = NA)
+```
+Yep, that's exactly the problem. The matrix is too sparse, so if I don't interpolate 0s into it or some other placeholder, the rows/genes cannot be clustered.
+
+What if I filter to 'at least 3 non-NA values?' Is that enough to calculate a distance matrix?
+
+```{r}
+pI_norm <- top_10perc_log10 |> 
+  rowwise() |> 
+  mutate(MB231norm = (pI_MB231 - meanpi) / stdev,
+        MCF10Anorm = (pI_MCF10A - meanpi) / stdev,
+        MCF7norm = (pI_MCF7 - meanpi) / stdev,
+         SUM159norm = (pI_SUM159 - meanpi) / stdev,
+         T47Dnorm = (pI_T47D - meanpi) / stdev) |>
+  ungroup() |> 
+  filter(
+    3 <= (as.numeric(!is.na(pI_MB231)) +
+      as.numeric(!is.na(pI_MCF10A)) +
+      as.numeric(!is.na(pI_MCF7)) +
+      as.numeric(!is.na(pI_SUM159)) +
+      as.numeric(!is.na(pI_T47D)))
+    ) |>
+  ungroup()
+```
+
+Normalized matrix:
+```{r}
+simple_mat <- as.matrix(pI_norm[,18:22])
+rownames(simple_mat) <- pI_norm[[4]]
+colnames(simple_mat) <- c("MB231", "MCF10A", "MCF7", "SUM159", "T47D")
+```
+
+```{r}
+hm1 <- heatmap(simple_mat, scale="none", cexCol = 0.8, labRow = "", main = "pI clustering, row norm, (n=1029)", na.rm = TRUE)
+```

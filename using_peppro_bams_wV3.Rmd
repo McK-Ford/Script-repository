@@ -1,0 +1,103 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+---
+title: "Pausing index Project Cell Lines 2/13/2023"
+output: html_notebook
+---
+#Note on R notebook for anyone else looking at it
+Good way to keep my code documented with the products it produces. Used for
+interactive scripts - stick to simple R scripts for source files. Unlike a normal
+R markdown file, does not rerun all chunks when making the finished product. Instead, 
+run the chunks like in a normal R script, then hit preview and it will take the material
+you've already ran for the printout.
+
+```{r sourcecode}
+source("~/Script repository/R scripting/My_Useful_Fns.R") #12/09/2022 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/My_Useful_Fns.R
+enableJIT(3)
+```
+
+```{r genetab}
+gc <- read.delim(
+  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/Untouched source data/Gencode39_knowngene.hg38.txt.gz",
+  header=TRUE
+)
+#remove irrelevant columns
+gc2 <- gc |>  dplyr::select(-c(7:17, 20, 22, 24:26)) #unless Ching-Hua used detect transcripts?
+gc3 <- gc2[,c(1:3, 7, 5:6, 4, 8:10)]
+colnames(gc3) <- c("chrom", "start", "end", "symbol",
+                       "score", "strand", "ENST_ID", "ID3", "class", "type")
+gc_genes_only <- gc3 |> 
+  filter(type=="protein_coding" & !grepl('chrY|([\\w_]+)alt|random|fix|v1', chrom)) ###86K out of 266K
+gc4p <- gc_genes_only |> 
+  group_by(symbol) |> 
+  filter(strand == "+") |> 
+  mutate(start_site=min(start)) |> 
+  filter(start==start_site) |> 
+  dplyr::select(-c(11)) |> 
+  distinct(symbol, .keep_all = TRUE) |> 
+  ungroup()
+gc4m <- gc_genes_only |> 
+  group_by(symbol) |> 
+  filter(strand == "-") |> 
+  mutate(start_site=max(end)) |> 
+  filter(end==start_site) |> 
+  dplyr::select(-c(11)) |> 
+  distinct(symbol, .keep_all = TRUE) |> 
+  ungroup()
+
+gc4=rbind(gc4p, gc4m)
+gc4$symbol=paste0(gc4$symbol, "_", gc4$start)
+```
+
+```{r MCF7}
+MCF7_p <- pI(bed=gc4,
+               bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/PEPPRO_SE/MCF7/aligned_hg38/MCF7_plus.bam",
+               pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+```{r}
+MCF7_m <- pI(bed=gc4,
+               bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/PEPPRO_SE/MCF7/aligned_hg38/MCF7_minus.bam",
+               pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+
+```{r MB231}
+MB231_p <- pI(bed=gc4,
+                bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/PEPPRO_SE/MB231/aligned_hg38/MB231_plus.bam",
+                pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+
+```{r}
+MB231_m <- pI(bed=gc4,
+                bam="C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/PEPPRO_SE/MB231/aligned_hg38/MB231_minus.bam",
+                pairedEnd = FALSE, pause_s=0, pause_e = 100)
+```
+```{r}
+MCF7_p = MCF7_p[MCF7_p$strand == "+",]
+MCF7_m = MCF7_m[MCF7_m$strand == "-",]
+MB231_p = MB231_p[MB231_p$strand == "+",]
+MB231_m = MB231_m[MB231_m$strand == "-",]
+```
+
+
+```{r processing and combining tables}
+pI_tab_p <- cbind(MCF7_p, MB231_p[,13:18])
+pI_tab_m <- cbind(MCF7_m, MB231_m[,13:18])
+pI_tab <- rbind(pI_tab_p, pI_tab_m)
+colnames(pI_tab) = c(colnames(pI_tab[,1:12]),
+                     paste0("MCF7",           ".", colnames(pI_tab[,13:18])),
+                     paste0("MB231",          ".", colnames(pI_tab[,13:18])))
+write.table(pI_tab, file="cell_lines_pI_4_no_filter.txt", quote=FALSE, sep="\t", row.names = FALSE)
+pI_tab_longform = pI_tab %>%
+  pivot_longer(cols=c(13:24), names_to = c("cell_line", ".value"), names_pattern = "(.+)\\.(.+)")
+```
+
+```{r summarizing}
+summary(pI_tab$MCF7.pI)
+summary(pI_tab$MB231.pI)
+```
+wtf
+
+okay checking some things... Oh. I see. They flip their bams to match the direction of tx strand, while we only flip the bigwigs. Because of that, my function currently flips the bams, resulting in counts of 0 for the correct strand and present counts for the incorrect strand. Silly, but it is what it is. Need to figure out how to use these bams then, in case the dif alignment in peppro helps us.

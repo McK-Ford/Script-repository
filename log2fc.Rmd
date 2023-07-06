@@ -1,0 +1,27 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+protein_coding_peppro_withrankdif <- read.delim("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/Vertino Lab/project cell lines/protein_coding_peppro_withrankdif.txt")
+```
+
+```{r}
+fc_chart = protein_coding_peppro_withrankdif[1:8]
+```
+
+```{r}
+fc_chart$MCF7overMB231 = log2(fc_chart$pI_MCF7/fc_chart$pI_MB231)
+```
+
+```{r}
+fc_chart$MCF7overSUM159 = log2(fc_chart$pI_MCF7/fc_chart$pI_SUM159)
+fc_chart$T47DoverMB231 = log2(fc_chart$pI_T47D/fc_chart$pI_MB231)
+fc_chart$T47DoverSUM159 = log2(fc_chart$pI_T47D/fc_chart$pI_SUM159)
+```
+
+```{r}
+write.table(fc_chart, file="peppro_w_log2fc.txt", quote=FALSE, sep="\t", row.names = FALSE)
+```
+

@@ -1,0 +1,78 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+```
+
+```{r}
+pI_tab <- read.delim("C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V3/project_cell_lines_pI.txt")
+```
+Do we want to throw out NA or do NA as 0? Let's just try it with throwing out NA for now.
+```{r}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2, hjust=0.5),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+
+ggplot(pI_tab, aes(pI.MCF7)) +
+  stat_ecdf(geom="step") + mytheme
+```
+
+```{r}
+g= ggplot(pI_tab, aes(log10(pI.MCF7))) +
+  stat_ecdf(geom="step") + mytheme
+g
+```
+
+Are we sure it's not the log of the pI? This looks a lot more like a 'S' curve. ... It's totally the log of the pI, it's just that papers translate the log10 X axis into non-log numbers for ease of interpretation.
+
+```{r}
+g+scale_x_log10()
+```
+why did that do weird things... oh unless it's used more like this:
+
+```{r}
+g= ggplot(pI_tab, aes(pI.MCF7)) +
+  stat_ecdf(geom="step") + mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma())
+g
+```
+
+```{r}
+g2= ggplot(pI_tab, aes(pI.T47D)) +
+  stat_ecdf(geom="step") + mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma())
+g2
+```
+```{r}
+g3= ggplot(pI_tab, aes(pI.MB231)) +
+  stat_ecdf(geom="step") + mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma())
+g3
+```
+```{r}
+g4= ggplot(pI_tab, aes(pI.SUM159)) +
+  stat_ecdf(geom="step") + mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma())
+g4
+```
+```{r}
+g5= ggplot(pI_tab, aes(pI.MCF10A)) +
+  stat_ecdf(geom="step") + mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma())
+g5
+```

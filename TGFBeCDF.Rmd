@@ -1,0 +1,120 @@
+---
+title: "TGFB ecdf"
+output: html_notebook
+---
+
+
+
+```{r packages}
+library(tidyverse)
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_treatmentTGFb/ProSeq/PEPPRO_SE_VER_60_62/R1/"
+MCF10A_ctrlA <- read.delim(
+  paste0(DIR, "MCF10A_CTRL_A/QC_hg38/MCF10A_CTRL_A_pause_index.bed.gz"),
+  header = FALSE
+  )
+MCF10A_ctrlB <- read.delim(
+  paste0(DIR, "MCF10A_CTRL_B/QC_hg38/MCF10A_CTRL_B_pause_index.bed.gz"),
+  header = FALSE
+  )
+MCF10A_treatA <- read.delim(
+  paste0(DIR, "MCF10A_TGFb_A/QC_hg38/MCF10A_TGFb_A_pause_index.bed.gz"),
+  header = FALSE
+  )
+MCF10A_treatB <- read.delim(
+  paste0(DIR, "MCF10A_TGFb_B/QC_hg38/MCF10A_TGFb_B_pause_index.bed.gz"),
+  header = FALSE
+  )
+```
+
+```{r}
+library(biomaRt)
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "https://useast.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+```
+
+```{r}
+tgfb_lst <- list(MCF10A_ctrlA = MCF10A_ctrlA,
+               MCF10A_ctrlB = MCF10A_ctrlB,
+               MCF10A_treatA = MCF10A_treatA,
+               MCF10A_treatB = MCF10A_treatB
+               )
+
+for (i in seq_along(tgfb_lst)) {
+  colnames(tgfb_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand")
+    annotLookup = getBM(
+    mart = mart,
+    attributes = c(
+      "hgnc_symbol",
+      "gene_biotype"),
+    filter = "hgnc_symbol",
+    values = tgfb_lst[[i]]$symbol,
+    uniqueRows=TRUE)
+  tgfb_lst[[i]] <- merge(tgfb_lst[[i]], annotLookup, by.x = "symbol",
+                     by.y = "hgnc_symbol", all = TRUE)
+ tgfb_lst[[i]] = tgfb_lst[[i]] |>
+    filter(tgfb_lst[[i]][[7]] == "protein_coding")
+   print(
+    paste0(
+      "Length of ",
+      names(tgfb_lst)[[i]],
+      " is: ",
+      dim(tgfb_lst[[i]])[1]
+      )
+    )
+}
+```
+```{r}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2, hjust=0.5),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+tgfb_colors <- c("Control A" = "blue", "Control B" = "lightblue", "Treatment A" = "red", "Treatment B" = "orange")
+```
+
+```{r}
+Control_A = tgfb_lst[[1]]
+Control_B = tgfb_lst[[2]]
+TGFb_A = tgfb_lst[[3]]
+TGFb_B = tgfb_lst[[4]]
+```
+
+
+
+```{r}
+gplot_tgfb = ggplot() + 
+  stat_ecdf(geom="step", data = Control_A, aes(pI, color = "Control A")) +
+  stat_ecdf(geom="step", data = Control_B, aes(pI, color = "Control B")) +
+  stat_ecdf(geom="step", data = TGFb_A, aes(pI, color = "Treatment A")) +
+  stat_ecdf(geom="step", data = TGFb_B, aes(pI, color = "Treatment B")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution of pI") +
+  ggtitle("TGFb treated vs untreated (MCF10A)") +
+  scale_color_manual(values = tgfb_colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())
+gplot_tgfb
+```
+
+```{r}
+pdf(file="TGFb_cdf.pdf")
+gplot_tgfb
+dev.off()
+```
+
+
+
