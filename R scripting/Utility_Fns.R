@@ -36,3 +36,8 @@ invert_list <- function( LoL ) {
   tmp_ls <- lapply( LoL, '[', names( LoL[[1]] ) )
   apply( do.call( rbind, tmp_ls ), 2, as.list )
 }
+
+write_genetsv <- function(tab, name, coln = FALSE){
+  write.table(tab, name, quote=FALSE,
+  row.names=FALSE, col.names=coln, sep = "\t")
+}

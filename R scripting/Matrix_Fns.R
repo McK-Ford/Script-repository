@@ -90,7 +90,7 @@ bam_vars <- function( bam, pairedEnd = FALSE, rnorm = TRUE, debug = FALSE, ... )
   return( list("bam_info" = bam_info, "si" = si, "readcounts" = readcounts) )
 }
 
-bw_olaps <- function( gr, bw_sub, ignorestrand = FALSE, debug = FALSE, ... ){
+bw_olaps <- function( gr, bw_sub, ignorestrand = FALSE, debug = FALSE, len_adj = TRUE, ... ){
     olap <-  findOverlaps( gr, bw_sub, ignore.strand = ignorestrand )
     bw_df <-  data.frame( bw_sub[ subjectHits( olap ) ] )
     regions_df <-  data.frame( gr[ queryHits( olap ) ] )
@@ -111,10 +111,10 @@ bw_olaps <- function( gr, bw_sub, ignorestrand = FALSE, debug = FALSE, ... ){
                             by = .( ID, BI )
                             ]
     hist <- dcast( tmp2, ID~BI, value.var = "V1" ) 
-    hist <- length_adjuster(hist, ...)
+    if (len_adj) {hist <- length_adjuster(hist, ...)}
 }
 
-bam_olaps <- function( gr, bam_sub, long_hist, ignorestrand = FALSE, debug = FALSE, ... ){
+bam_olaps <- function( gr, bam_sub, long_hist, ignorestrand = FALSE, debug = FALSE, len_adj = TRUE, ... ){
   olap <- as.numeric(countOverlaps( gr, bam_sub, ignore.strand = ignorestrand))
   if ( debug ) print( head( olap ) )
   if ( debug ) print( tail( olap ) )
@@ -123,7 +123,7 @@ bam_olaps <- function( gr, bam_sub, long_hist, ignorestrand = FALSE, debug = FAL
   colnames( hist ) <- c( "ID", colnames( hist[, 2:ncol( hist ) ] ) )
   if ( debug ) print( head( hist ) )
   if ( debug ) print( tail( hist ) )
-  hist <- length_adjuster(hist, ...)
+  if (len_adj) {hist <- length_adjuster(hist, ...)}
   return( hist )
 }
 
@@ -286,56 +286,3 @@ single_chrom_mat <- function(
     if (bam_or_bw == "bw") { tmp_mat <- bw_olaps( gr, bw_sub = bw_sub, ignorestrand = ignorestrand, debug = debug, bs = bs, ... ) }
     return( list( "region" = bed_sub, "scores" = tmp_mat ) )
   }
-
-#this function may not be great, I haven't reevaluated it in a while. Possibly remove?
-pI <- function( bed, bam, pairedEnd, pause_s,
-                pause_e, body_s = pause_e, mode = "sbp" ) {
-  #Args: bed is table with 1st 6 cols in bed format, bam is string to bam filepath,
-  #pairedEnd is bool, pause_s and pause_e are integer positions indicating bp relative
-  #to TSS. gene_body implicitly defined as pause_e through gene_end. Switch mode to fullread for groseq.
-  bed <- bed[ ( bed[[3]] - bed[[2]] ) >= pause_e, ]
-  bed <- order_bed_by_chrom( bed )
-  pb <- bed #pausebed, abbreviation makes this code much easier to read
-  bb <- bed #bodybed
-  pb[ pb[[6]] == "+", ][2] <- pb[ pb[[6]] == "+", ][2] + pause_s
-  pb[ pb[[6]] == "-", ][3] <- pb[ pb[[6]] == "-", ][3] - pause_s
-  pb[ pb[[6]] == "+", ][3] <- pb[ pb[[6]] == "+", ][2] + pause_e
-  pb[ pb[[6]] == "-", ][2] <- pb[ pb[[6]] == "-", ][3] - pause_e
-  bb[ bb[[6]] == "+", ][2] <- bb[ bb[[6]] == "+", ][2] + body_s
-  bb[ bb[[6]] == "-", ][3] <-
-    bb[ bb[[6]] == "-", ][3] - body_s
-  pause_tab <- score_matrix( bed = pb, bam = bam, n = 1,
-                             method = "bi_anch", mode = mode,
-                             revcomp = TRUE, pairedEnd = pairedEnd,
-                             rnorm = FALSE, ignorestrand = FALSE )
-  body_tab <- score_matrix( bed = bb, bam = bam, n = 1,
-                            method = "bi_anch", mode = mode,
-                            revcomp = TRUE, pairedEnd = pairedEnd,
-                            rnorm = FALSE, ignorestrand = FALSE)
-  joined_tab <- cbind(
-    bed,
-    pb[ ,2:3 ],
-    pause_tab[[ ncol( pause_tab ) ]],
-    body_tab[[ ncol( body_tab ) ]]
-  )
-  colnames( joined_tab ) <- c(
-    colnames( bed ),
-    "pause_start",
-    "pause_end",
-    "pause_counts",
-    "body_counts"
-  )
-  bam_info = if(pairedEnd) BamFile(bam,asMates=TRUE) else BamFile(bam)
-  #normalizing factor
-  rcm <- readcounts( bam_info, pairedEnd, debug = FALSE ) / 1e6
-  tot_counts <- joined_tab$pause_counts + joined_tab$body_counts
-  gene_lens <- ( joined_tab[[3]] - joined_tab[[2]] ) / 1e3
-  joined_tab$total_norm <- ( tot_counts / gene_lens ) / rcm
-  #pI_calc
-  joined_tab$lengthnorm_pause <-
-    joined_tab$pause_counts / (joined_tab$pause_end - joined_tab$pause_start)
-  joined_tab$lengthnorm_body <-
-    joined_tab$body_counts / (joined_tab[[3]] - joined_tab[[2]] - pause_e)
-  joined_tab$pI <- joined_tab$lengthnorm_pause / joined_tab$lengthnorm_body
-  return( joined_tab )
-}
