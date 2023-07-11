@@ -1,0 +1,515 @@
+---
+title: "No timecourse tt-seq"
+output:
+  html_document:
+    df_print: paged
+date: "2023-05-22"
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r source, message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+```
+
+```{r genes}
+prox <- read.delim( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/prox_tss_order.bed",
+  header = FALSE
+  )
+dist <- read.delim(
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/dist_cgi_order.bed",
+  header = FALSE
+  )
+```
+
+
+```{r labelling}
+gene_info <- rbind( prox, dist )
+colnames( gene_info ) <- c( "uniq_id", "chrom", "cpg_s", "cpg_e",
+                            "cpg_num", "gene_s", "gene_e",
+                            "strand", "name", "ex2in", "gene_l",
+                            "cpg_l", "TSS_3prime", "prime5_TSS",
+                            "TSS_ex", "TSS_skew", "CGI3_skew",
+                            "TES_skew", "CGI5_skew", "x2in_skew",
+                            "simple_skew_class")
+```
+
+Bed filtering 1
+```{r}
+gene_info_p <- gene_info |> filter( strand == "+" & chrom != "chrX" )
+gene_info_m <- gene_info |> filter( strand == "-" & chrom != "chrX" )
+```
+
+
+```{r}
+TSS_CGI_E_prox_p <- gene_info_p |>
+  filter(simple_skew_class=="Prox") |> 
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_E_prox_m <- gene_info_m |>
+  filter(simple_skew_class=="Prox") |> 
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+
+TSS_CGI_E_dist_p <- gene_info_p |>
+  filter(simple_skew_class=="Dist") |> 
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_E_dist_m <- gene_info_m |>
+  filter(simple_skew_class=="Dist") |> 
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+```
+
+```{r}
+tab_ls <- list(
+  TSS_CGI_E_prox_p,
+  TSS_CGI_E_prox_m,
+  TSS_CGI_E_dist_p,
+  TSS_CGI_E_dist_m
+)
+for (i in seq_along( tab_ls ) ) {
+  colnames( tab_ls[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+```
+
+```{r}
+TSS_tab <- list(rbind(tab_ls[[1]], tab_ls[[2]]), rbind(tab_ls[[3]], tab_ls[[4]]))
+tmp_ls <- tab_ls
+tmp_ls[[1]]$start <- tmp_ls[[1]]$end - 1
+tmp_ls[[1]]$end <- tmp_ls[[1]]$start + 1
+tmp_ls[[3]]$start <- tmp_ls[[3]]$end - 1
+tmp_ls[[4]]$end <- tmp_ls[[4]]$start + 1
+CGI_tab <- list(rbind(tmp_ls[[1]], tmp_ls[[2]]), rbind(tmp_ls[[3]], tmp_ls[[4]]))
+```
+
+```{r bws}
+DIR1 <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE156400_Fang_2021_HEK293T_PROseq_Rloops/"
+DIR2 <- "Pro-seq/20211207 realigned/bw/"
+DIR3 <- "TT-seq/"
+BWs <- list(
+  paste0(
+    DIR1, DIR2,
+    "Liang_hek_proseq_2021_1_fwd_nodedup.bw"
+    ),
+  paste0(
+    DIR1, DIR2,
+    "Liang_hek_proseq_2021_2_fwd_nodedup.bw"
+    ),
+  paste0(
+    DIR1, DIR2,
+    "Liang_hek_proseq_2021_1_rev_nodedup.bw"
+    ),
+  paste0(
+    DIR1, DIR2,
+    "Liang_hek_proseq_2021_2_rev_nodedup.bw"
+    ),
+  paste0(
+    DIR1, DIR3,
+    "GSM4730176_HEK293T-TTseq-rep1.fwd.bw"
+    ),
+  paste0(
+    DIR1, DIR3,
+    "GSM4730177_HEK293T-TTseq-rep2.fwd.bw"
+    ),
+  paste0(
+    DIR1, DIR3,
+    "GSM4730176_HEK293T-TTseq-rep1.rev.bw"
+    ),
+  paste0(
+    DIR1, DIR3,
+    "GSM4730177_HEK293T-TTseq-rep2.rev.bw"
+    )
+)
+```
+
+```{r}
+TSS_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+for ( bed in seq_along( TSS_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    TSS_LoL[[bed]][[bw]] <- score_matrix(
+      bed = TSS_tab[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = FALSE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+
+```{r}
+CGI_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+for ( bed in seq_along( CGI_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    CGI_LoL[[bed]][[bw]] <- score_matrix(
+      bed = CGI_tab[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+will need to split back out by strand for sense and antisense... Nowhere near the ideal way to do this but it's easy. 
+Prox TSS
+```{r}
+prox_proseq_plus_tss <- TSS_LoL[[1]][[1]]
+sense_tmp <- prox_proseq_plus_tss[strand == "+"]
+antisense_tmp <- prox_proseq_plus_tss[strand == "-"]
+prox_proseq_minus_tss <- TSS_LoL[[1]][[3]]
+sense_tmp2 <- prox_proseq_minus_tss[strand == "-"]
+antisense_tmp2 <- prox_proseq_minus_tss[strand == "+"]
+prox_proseq_sense_tss <- rbind(sense_tmp, sense_tmp2)
+prox_proseq_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+###
+prox_proseq2_plus_tss <- TSS_LoL[[1]][[2]]
+sense_tmp <- prox_proseq2_plus_tss[strand == "+"]
+antisense_tmp <- prox_proseq2_plus_tss[strand == "-"]
+prox_proseq2_minus_tss <- TSS_LoL[[1]][[4]]
+sense_tmp2 <- prox_proseq2_minus_tss[strand == "-"]
+antisense_tmp2 <- prox_proseq2_minus_tss[strand == "+"]
+prox_proseq2_sense_tss <- rbind(sense_tmp, sense_tmp2)
+prox_proseq2_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+##
+prox_ttseq_plus_tss <- TSS_LoL[[1]][[5]]
+sense_tmp <- prox_ttseq_plus_tss[strand == "+"]
+antisense_tmp <- prox_ttseq_plus_tss[strand == "-"]
+prox_ttseq_minus_tss <- TSS_LoL[[1]][[7]]
+sense_tmp2 <- prox_ttseq_minus_tss[strand == "-"]
+antisense_tmp2 <- prox_ttseq_minus_tss[strand == "+"]
+prox_ttseq_sense_tss <- rbind(sense_tmp, sense_tmp2)
+prox_ttseq_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+##
+prox_ttseq2_plus_tss <- TSS_LoL[[1]][[6]]
+sense_tmp <- prox_ttseq2_plus_tss[strand == "+"]
+antisense_tmp <- prox_ttseq2_plus_tss[strand == "-"]
+prox_ttseq2_minus_tss <- TSS_LoL[[1]][[8]]
+sense_tmp2 <- prox_ttseq2_minus_tss[strand == "-"]
+antisense_tmp2 <- prox_ttseq2_minus_tss[strand == "+"]
+prox_ttseq2_sense_tss <- rbind(sense_tmp, sense_tmp2)
+prox_ttseq2_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+```
+Dist TSS
+```{r}
+dist_proseq_plus_tss <- TSS_LoL[[2]][[1]]
+sense_tmp <- dist_proseq_plus_tss[strand == "+"]
+antisense_tmp <- dist_proseq_plus_tss[strand == "-"]
+dist_proseq_minus_tss <- TSS_LoL[[2]][[3]]
+sense_tmp2 <- dist_proseq_minus_tss[strand == "-"]
+antisense_tmp2 <- dist_proseq_minus_tss[strand == "+"]
+dist_proseq_sense_tss <- rbind(sense_tmp, sense_tmp2)
+dist_proseq_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+###
+dist_proseq2_plus_tss <- TSS_LoL[[2]][[2]]
+sense_tmp <- dist_proseq2_plus_tss[strand == "+"]
+antisense_tmp <- dist_proseq2_plus_tss[strand == "-"]
+dist_proseq2_minus_tss <- TSS_LoL[[2]][[4]]
+sense_tmp2 <- dist_proseq2_minus_tss[strand == "-"]
+antisense_tmp2 <- dist_proseq2_minus_tss[strand == "+"]
+dist_proseq2_sense_tss <- rbind(sense_tmp, sense_tmp2)
+dist_proseq2_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+##
+dist_ttseq_plus_tss <- TSS_LoL[[2]][[5]]
+sense_tmp <- dist_ttseq_plus_tss[strand == "+"]
+antisense_tmp <- dist_ttseq_plus_tss[strand == "-"]
+dist_ttseq_minus_tss <- TSS_LoL[[2]][[7]]
+sense_tmp2 <- dist_ttseq_minus_tss[strand == "-"]
+antisense_tmp2 <- dist_ttseq_minus_tss[strand == "+"]
+dist_ttseq_sense_tss <- rbind(sense_tmp, sense_tmp2)
+dist_ttseq_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+##
+dist_ttseq2_plus_tss <- TSS_LoL[[2]][[6]]
+sense_tmp <- dist_ttseq2_plus_tss[strand == "+"]
+antisense_tmp <- dist_ttseq2_plus_tss[strand == "-"]
+dist_ttseq2_minus_tss <- TSS_LoL[[2]][[8]]
+sense_tmp2 <- dist_ttseq2_minus_tss[strand == "-"]
+antisense_tmp2 <- dist_ttseq2_minus_tss[strand == "+"]
+dist_ttseq2_sense_tss <- rbind(sense_tmp, sense_tmp2)
+dist_ttseq2_antisense_tss <- rbind(antisense_tmp, antisense_tmp2)
+```
+Prox CGI
+```{r}
+prox_proseq_plus_CGI <- CGI_LoL[[1]][[1]]
+sense_tmp <- prox_proseq_plus_CGI[strand == "+"]
+antisense_tmp <- prox_proseq_plus_CGI[strand == "-"]
+prox_proseq_minus_CGI <- CGI_LoL[[1]][[3]]
+sense_tmp2 <- prox_proseq_minus_CGI[strand == "-"]
+antisense_tmp2 <- prox_proseq_minus_CGI[strand == "+"]
+prox_proseq_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+prox_proseq_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+###
+prox_proseq2_plus_CGI <- CGI_LoL[[1]][[2]]
+sense_tmp <- prox_proseq2_plus_CGI[strand == "+"]
+antisense_tmp <- prox_proseq2_plus_CGI[strand == "-"]
+prox_proseq2_minus_CGI <- CGI_LoL[[1]][[4]]
+sense_tmp2 <- prox_proseq2_minus_CGI[strand == "-"]
+antisense_tmp2 <- prox_proseq2_minus_CGI[strand == "+"]
+prox_proseq2_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+prox_proseq2_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+##
+prox_ttseq_plus_CGI <- CGI_LoL[[1]][[5]]
+sense_tmp <- prox_ttseq_plus_CGI[strand == "+"]
+antisense_tmp <- prox_ttseq_plus_CGI[strand == "-"]
+prox_ttseq_minus_CGI <- CGI_LoL[[1]][[7]]
+sense_tmp2 <- prox_ttseq_minus_CGI[strand == "-"]
+antisense_tmp2 <- prox_ttseq_minus_CGI[strand == "+"]
+prox_ttseq_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+prox_ttseq_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+##
+prox_ttseq2_plus_CGI <- CGI_LoL[[1]][[6]]
+sense_tmp <- prox_ttseq2_plus_CGI[strand == "+"]
+antisense_tmp <- prox_ttseq2_plus_CGI[strand == "-"]
+prox_ttseq2_minus_CGI <- CGI_LoL[[1]][[8]]
+sense_tmp2 <- prox_ttseq2_minus_CGI[strand == "-"]
+antisense_tmp2 <- prox_ttseq2_minus_CGI[strand == "+"]
+prox_ttseq2_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+prox_ttseq2_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+```
+Dist CGI
+```{r}
+dist_proseq_plus_CGI <- CGI_LoL[[2]][[1]]
+sense_tmp <- dist_proseq_plus_CGI[strand == "+"]
+antisense_tmp <- dist_proseq_plus_CGI[strand == "-"]
+dist_proseq_minus_CGI <- CGI_LoL[[2]][[3]]
+sense_tmp2 <- dist_proseq_minus_CGI[strand == "-"]
+antisense_tmp2 <- dist_proseq_minus_CGI[strand == "+"]
+dist_proseq_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+dist_proseq_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+###
+dist_proseq2_plus_CGI <- CGI_LoL[[2]][[2]]
+sense_tmp <- dist_proseq2_plus_CGI[strand == "+"]
+antisense_tmp <- dist_proseq2_plus_CGI[strand == "-"]
+dist_proseq2_minus_CGI <- TSS_LoL[[2]][[4]]
+sense_tmp2 <- dist_proseq2_minus_CGI[strand == "-"]
+antisense_tmp2 <- dist_proseq2_minus_CGI[strand == "+"]
+dist_proseq2_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+dist_proseq2_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+##
+dist_ttseq_plus_CGI <- CGI_LoL[[2]][[5]]
+sense_tmp <- dist_ttseq_plus_CGI[strand == "+"]
+antisense_tmp <- dist_ttseq_plus_tss[strand == "-"]
+dist_ttseq_minus_CGI <- CGI_LoL[[2]][[7]]
+sense_tmp2 <- dist_ttseq_minus_CGI[strand == "-"]
+antisense_tmp2 <- dist_ttseq_minus_CGI[strand == "+"]
+dist_ttseq_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+dist_ttseq_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+##
+dist_ttseq2_plus_CGI <- CGI_LoL[[2]][[6]]
+sense_tmp <- dist_ttseq2_plus_CGI[strand == "+"]
+antisense_tmp <- dist_ttseq2_plus_CGI[strand == "-"]
+dist_ttseq2_minus_CGI <- CGI_LoL[[2]][[8]]
+sense_tmp2 <- dist_ttseq2_minus_CGI[strand == "-"]
+antisense_tmp2 <- dist_ttseq2_minus_CGI[strand == "+"]
+dist_ttseq2_sense_CGI <- rbind(sense_tmp, sense_tmp2)
+dist_ttseq2_antisense_CGI <- rbind(antisense_tmp, antisense_tmp2)
+```
+Okay, now relist and summarize.
+
+```{r}
+TSS_LoL <- list(
+  prox_proseq_sense_tss,
+  dist_proseq_sense_tss,
+  prox_proseq_antisense_tss,
+  dist_proseq_antisense_tss,
+  prox_proseq2_sense_tss,
+  dist_proseq2_sense_tss,
+  prox_proseq2_antisense_tss,
+  dist_proseq2_antisense_tss,
+  prox_ttseq_sense_tss,
+  dist_ttseq_sense_tss,
+  prox_ttseq_antisense_tss,
+  dist_ttseq_antisense_tss,
+  prox_ttseq2_sense_tss,
+  dist_ttseq2_sense_tss,
+  prox_ttseq2_antisense_tss,
+  dist_ttseq2_antisense_tss
+)
+CGI_LoL <- list(
+  prox_proseq_sense_CGI,
+  dist_proseq_sense_CGI,
+  prox_proseq_antisense_CGI,
+  dist_proseq_antisense_CGI,
+  prox_proseq2_sense_CGI,
+  dist_proseq2_sense_CGI,
+  prox_proseq2_antisense_CGI,
+  dist_proseq2_antisense_CGI,
+  prox_ttseq_sense_CGI,
+  dist_ttseq_sense_CGI,
+  prox_ttseq_antisense_CGI,
+  dist_ttseq_antisense_CGI,
+  prox_ttseq2_sense_CGI,
+  dist_ttseq2_sense_CGI,
+  prox_ttseq2_antisense_CGI,
+  dist_ttseq2_antisense_CGI
+  )
+for ( bed in seq_along( TSS_LoL ) ) {
+        long_tab <- melt(TSS_LoL[[bed]], na.rm=TRUE, id.vars = c("uniq_id", "chrom", "start", "end", "score", "strand"))
+    TSS_LoL[[bed]] <- long_tab[, .(mean_score = mean(value, trim = 0.05)), by = list(variable)]
+    TSS_LoL[[bed]]$site <- "TSS"
+    TSS_LoL[[bed]]$variable <- as.numeric(TSS_LoL[[bed]]$variable)
+}
+
+for ( bed in seq_along( CGI_LoL ) ) {
+        long_tab <- melt(CGI_LoL[[bed]], na.rm=TRUE, id.vars = c("uniq_id", "chrom", "start", "end", "score", "strand"))
+    CGI_LoL[[bed]] <- long_tab[, .(mean_score = mean(value, trim = 0.05)), by = list(variable)]
+    CGI_LoL[[bed]]$site <- "CGI3"
+    CGI_LoL[[bed]]$variable <- as.numeric(CGI_LoL[[bed]]$variable)
+}
+```
+
+```{r}
+prox_tss <- TSS_LoL[c(1,3,5,7,9,11,13,15)]
+dist_tss <- TSS_LoL[c(2,4,6,8,10,12,14,16)]
+
+prox_cgi <- CGI_LoL[c(1,3,5,7,9,11,13,15)]
+dist_cgi <- CGI_LoL[c(2,4,6,8,10,12,14,16)]
+```
+
+```{r}
+for (i in seq_along(prox_tss)){ prox_tss[[i]]$class <- "prox" }
+for (i in seq_along(dist_tss)){ dist_tss[[i]]$class <- "dist" }
+for (i in seq_along(prox_cgi)){ prox_cgi[[i]]$class <- "prox" }
+for (i in seq_along(dist_cgi)){ dist_cgi[[i]]$class <- "dist" }
+```
+
+```{r}
+sense_tss <- unlist(list(prox_tss[c(1,3,5,7)], dist_tss[c(1,3,5,7)]), recursive = F)
+antisense_tss <- unlist(list(prox_tss[c(2,4,6,8)],
+                  dist_tss[c(2,4,6,8)]), recursive = F)
+
+sense_cgi <- unlist(list(prox_cgi[c(1,3,5,7)], dist_cgi[c(1,3,5,7)]), recursive = F)
+antisense_cgi <- unlist(list(prox_cgi[c(2,4,6,8)],
+                  dist_cgi[c(2,4,6,8)]), recursive = F)
+```
+
+```{r}
+for (i in seq_along(sense_tss)){ sense_tss[[i]]$strand <- "sense" }
+for (i in seq_along(antisense_tss)){ antisense_tss[[i]]$strand <- "antisense" }
+for (i in seq_along(sense_cgi)){ sense_cgi[[i]]$strand <- "sense" }
+for (i in seq_along(antisense_cgi)){ antisense_cgi[[i]]$strand <- "antisense" }
+```
+
+
+```{r}
+proseqtss <- rbind(sense_tss[[1]], sense_tss[[5]], antisense_tss[[1]], antisense_tss[[5]])
+proseqcgi <- rbind(sense_cgi[[1]], sense_cgi[[5]], antisense_cgi[[1]], antisense_cgi[[5]])
+proseq2tss <- rbind(sense_tss[[2]], sense_tss[[6]], antisense_tss[[2]], antisense_tss[[6]])
+proseq2cgi <- rbind(sense_cgi[[2]], sense_cgi[[6]], antisense_cgi[[2]], antisense_cgi[[6]])
+
+ttseqtss <- rbind(sense_tss[[3]], sense_tss[[7]], antisense_tss[[3]], antisense_tss[[7]])
+ttseqcgi <- rbind(sense_cgi[[3]], sense_cgi[[7]], antisense_cgi[[3]], antisense_cgi[[7]])
+ttseq2tss <- rbind(sense_tss[[4]], sense_tss[[8]], antisense_tss[[4]], antisense_tss[[8]])
+ttseq2cgi <- rbind(sense_cgi[[4]], sense_cgi[[8]], antisense_cgi[[4]], antisense_cgi[[8]])
+
+```
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+geom_p_tss <- proseqtss |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="proseq tss") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed")) +
+  ylim(0,0.5)
+geom_p_tss
+
+geom_p2_tss <- proseq2tss |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="proseq2 tss") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed")) +
+  ylim(0,0.5)
+geom_p2_tss
+
+geom_tt_tss <- ttseqtss |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="ttseq tss") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed"))  +
+  ylim(0,0.1)
+geom_tt_tss
+
+geom_tt2_tss <- ttseq2tss |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="ttseq2 tss") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed")) +
+  ylim(0,0.15)
+geom_tt2_tss
+```
+
+```{r}
+geom_p_cgi <- proseqcgi |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="proseq cgi") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed")) +
+  ylim(0,0.5)
+geom_p_cgi
+
+geom_p2_cgi <- proseq2cgi |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="proseq2 cgi") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed")) +
+  ylim(0,0.5)
+geom_p2_cgi
+
+geom_tt_cgi <- ttseqcgi |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="ttseq cgi") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed")) +
+  ylim(0,0.1)
+geom_tt_cgi
+
+geom_tt2_cgi <- ttseq2cgi |> ggplot( aes( x = variable, y = mean_score, color = class, linetype = strand)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="ttseq2 cgi") +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "Black") +
+  scale_linetype_manual(values=c("sense" = "solid", "antisense" = "dashed")) +
+  ylim(0,0.15)
+geom_tt2_cgi
+
+```
+

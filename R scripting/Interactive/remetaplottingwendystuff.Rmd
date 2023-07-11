@@ -1,0 +1,158 @@
+---
+title: "Trying to replicate Wendy's findings"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r}
+library( tidyverse )
+```
+
+
+```{r}
+cgi_pause_df_hg38_10_8_21 <- read.delim( "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/Old classes from 2015 paper/cgi_pause_df_hg38_10_8_21.txt" )
+```
+
+```{r}
+classes <- list( "Proximal", "Distal", "Silent" )
+strands <- list( "+", "-" )
+```
+
+```{r}
+plus_list <- classes
+minus_list <- classes
+
+for ( i in seq_along( classes ) ) {
+  plus_list[[i]] <- cgi_pause_df_hg38_10_8_21 |>
+    filter(class == classes[[i]] & strand == "+") |> 
+    select( c( "chrom", "gene_s", "cgi_e", "name2", "score", "strand" ) )
+  colnames( plus_list[[i]] ) <- c( "chrom", "start", "end", "uniq_id", "score", "strand" )
+  plus_list[[i]]$uniq_id <- paste0( plus_list[[i]]$uniq_id, "_", plus_list[[i]]$start )
+  plus_list[[i]] <- unique(plus_list[[i]])
+  
+   minus_list[[i]] <- cgi_pause_df_hg38_10_8_21 |>
+    filter(class == classes[[i]] & strand == "-") |> 
+    select( c( "chrom", "cgi_s", "gene_e", "name2", "score", "strand" ) )
+  colnames( minus_list[[i]] ) <- c( "chrom", "start", "end", "uniq_id", "score", "strand" )
+  minus_list[[i]]$uniq_id <- paste0( minus_list[[i]]$uniq_id, "_", minus_list[[i]]$end )
+  minus_list[[i]] <- unique(minus_list[[i]])
+}
+
+```
+
+```{r}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+```
+Now, wendy version extends the CGI...
+```{r}
+plus_list_ext <- plus_list
+minus_list_ext <- minus_list
+for ( i in seq_along( classes ) ) {
+  plus_list_ext[[i]]$end <- plus_list[[i]]$end + 200
+  minus_list_ext[[i]]$start <- minus_list[[i]]$start - 200
+}
+```
+
+
+```{r}
+list_of_matlists <- list( plus_list, plus_list_ext, minus_list, minus_list_ext )
+for ( i in seq_along( list_of_matlists ) ) {
+  sublist <- list_of_matlists[[i]]
+  for ( j in seq_along( sublist ) ) {
+    tmplist <- sublist[[j]]
+    sublist[[j]] <- score_matrix(
+      bed = tmplist,
+      readsource = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE41324_Kraus_2013_MCF7_GROseq/bams/Kraus.2013.Groseq.MCF7.1_QC.sort.sorted.bam",
+      n = 40,
+      method = "bi_anch", 
+      pairedEnd = FALSE,
+      revcomp = TRUE,
+      bam_or_bw = "bam",
+      ignorstrand = FALSE
+      )
+  }
+  list_of_matlists[[i]] <- sublist
+}
+tmp_backup <- list_of_matlists
+```
+
+FFS I just spent half a day because of a missing comma.
+
+Let's look at strands separately first because I don't want to miss any processing errors.
+
+```{r}
+list_of_matlists <- tmp_backup
+overallnames <- c("plus", "plus_ext", "minus", "minus_ext")
+for ( i in seq_along( list_of_matlists ) ) {
+  sublist <- list_of_matlists[[i]]
+  for ( j in seq_along( sublist ) ) {
+    tmptab <- sublist[[j]]
+    long_tab <- melt(tmptab, na.rm=TRUE, id.vars = c("uniq_id", "chrom", "start", "end", "score", "strand"))
+    mean_tab <- long_tab[, .(mean_score = mean(value)), by = variable]
+    mean_tab$class <- classes[[j]]
+    mean_tab$tab_id <- overallnames[[i]]
+    sublist[[j]] <- mean_tab
+  }
+  sublist$tab_id <- overallnames[[i]]
+  list_of_matlists[[i]] <- sublist
+}
+```
+
+
+
+```{r}
+exact <- rbind(list_of_matlists[[1]][[1]],
+                  list_of_matlists[[1]][[2]],
+                  list_of_matlists[[1]][[3]],
+                  list_of_matlists[[3]][[1]],
+                  list_of_matlists[[3]][[2]],
+                  list_of_matlists[[3]][[3]])
+extend <- rbind(list_of_matlists[[2]][[1]],
+                  list_of_matlists[[2]][[2]],
+                  list_of_matlists[[2]][[3]],
+                  list_of_matlists[[4]][[1]],
+                  list_of_matlists[[4]][[2]],
+                  list_of_matlists[[4]][[3]])
+```
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+geom_exact <- exact |> ggplot( aes( x = as.numeric(variable), y = mean_score, color = class, shape = tab_id)) +
+      geom_point(size=1.5 ) +
+      mytheme +
+      ggtitle(label="TSS_CpG_end_scaled_exact")
+geom_exact
+
+geom_extend <- extend |> ggplot( aes( x = as.numeric(variable), y = mean_score, color = class, shape = tab_id )) +
+      geom_point(size=1.5) +
+      mytheme  +
+      ggtitle(label="TSS_CpG_end_scaled_extend200")
+geom_extend
+```
+
+I don't think I messed up strands, because if I did, the prox would be more obviously flipped. So I can combine strands. Honestly though this looks nothing like the shape Wendy saw.
+
+```{r}
+pdf(file="metaplots_wendyrep.pdf")
+geom_exact
+geom_extend
+dev.off()
+```
+

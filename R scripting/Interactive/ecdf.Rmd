@@ -1,0 +1,194 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r source, message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+```
+
+```{r}
+mygenes <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+Bed filtering 1
+```{r}
+gene_info_p <- mygenes |> filter( strand == "+" & chrom != "chrX" & gene_l > 150 )
+gene_info_m <- mygenes |> filter( strand == "-" & chrom != "chrX" & gene_l > 150 )
+```
+
+For TSS regions (to get pause index, tss regions divided by gene body regions...)
+this isnt' actually prox dist, names are wrong
+```{r}
+TSS_p <- gene_info_p |>
+  select( c( "chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand" ) )
+TSS_m <- gene_info_m |>
+  select( c( "chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand" ) )
+
+colnames( TSS_p ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+colnames( TSS_m ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+```
+
+```{r}
+TSS_p$end <- TSS_p$start + 100
+TSS_m$start <- TSS_m$end - 100
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE156400_Fang_2021_HEK293T_PROseq_Rloops/Pro-seq/20211207 realigned/"
+```
+
+```{r}
+gene_tab <- rbind(TSS_p, TSS_m)
+
+bamscore <- score_matrix(
+      bed = gene_tab,
+      readsource = paste0(
+    DIR,
+    "bam/Liang_hek_proseq_2021_1.bam"
+    ),
+      n = 1,
+      ignorestrand = FALSE,
+      sbp=TRUE,
+      revcomp=TRUE,
+      method = "bi_anch",
+      bam_or_bw = "bam",
+    rnorm = FALSE 
+      )
+```
+
+
+For gene body
+```{r}
+body_p <- gene_info_p |>
+  select( c( "chrom", "gene_s", "gene_e", "uniq_id", "TSS_skew", "strand" ) )
+body_m <- gene_info_m |>
+  select( c( "chrom",  "gene_s", "gene_e", "uniq_id", "TSS_skew", "strand" ) )
+
+colnames( body_p ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+colnames( body_m ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+
+body_p$start <- body_p$start + 100
+body_m$end <- body_m$end - 100
+
+body_tab <- rbind(body_p, body_m)
+```
+
+```{r}
+bambodyscore <- score_matrix(
+      bed = body_tab,
+      readsource = paste0(
+    DIR,
+    "bam/Liang_hek_proseq_2021_1.bam"
+    ),
+      n = 1,
+      ignorestrand = FALSE,
+      sbp=TRUE,
+      revcomp=TRUE,
+      method = "bi_anch",
+      bam_or_bw = "bam"
+      )
+```
+
+
+Alright. Now to get values.
+
+They are in identical order, so it is safe to join them by merging them. Unfortunately they're data tables not frames at the moment which I think is why this is being tempramental right now..
+```{r}
+bamscore <- as.data.frame(bamscore)
+bambodyscore <- as.data.frame(bambodyscore)
+
+bam_scores <- cbind(bamscore[1], bamscore[7], bambodyscore[7])
+colnames(bam_scores) <- c("uniq_id", "tss_score", "body_score")
+```
+There we go, for some reason it didn't like double brackets today. As they are already normalized to bin size I can just divide one by the other.
+```{r}
+bam_scores$idx <- bam_scores$tss_score / bam_scores$body_score
+```
+
+```{r}
+gene_info <- rbind(gene_info_p, gene_info_m)
+parenttab <- merge(gene_info, bam_scores, by = "uniq_id")
+```
+
+Now we need to filter out the lowest gene body scores so we don't have falsely inflated indices.
+```{r}
+summary(parenttab$body_score) #remember, this is essentially 'reads per base pair' so of course they're low. Let's say 1 read per 10 kb?
+ecdf(parenttab$body_score)(0.0001)
+```
+About 24% of the data falls below that threshold. Is that reasonable?
+```{r}
+quantile(parenttab$body_score, 0.05)
+```
+Probably more reasonable than a 1 read per million bp standard. Can always try with a less stringent filter though to see if it matters.
+
+```{r}
+distal <- parenttab |> filter(simple_skew_class == "Dist" & body_score > 0.0001) 
+proximal <- parenttab |> filter(simple_skew_class == "Prox" & body_score > 0.0001) 
+```
+
+```{r}
+test = wilcox.test(x = proximal$idx, y = distal$idx, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+test
+```
+Okay, so p value does indicate there is a proximal/distal shift.
+
+```{r}
+source("~/Script repository/R scripting/Graphing_Functions.R")
+skew_colors <- c("Proximally skewed" = "blue", "Distally skewed" = "red")
+ ggplot() +
+  stat_ecdf(geom="step", data=proximal, aes(idx, color = "Proximally skewed")) +
+  stat_ecdf(geom="step", data=distal, aes(idx, color = "Distally skewed")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+   ggtitle("Proximal pause by skew class") +
+  scale_color_manual(values = skew_colors) +
+  ylab("Cumulative Distribution") +
+  annotate("text", x = 5, y = 0.75, label = paste0("p=", signif(test$p.value, digits = 4)))
+```
+
+
+
+
+
+
+
+
+

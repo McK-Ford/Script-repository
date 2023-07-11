@@ -1,0 +1,390 @@
+---
+title: "Timecourse TTseq"
+output:
+  pdf_document:
+    latex_engine: lualatex
+  html_notebook: default
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set( cache=TRUE )
+```
+
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r source, message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+```
+
+```{r genes}
+prox <- read.delim( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/prox_tss_order.bed",
+  header = FALSE
+  )
+dist <- read.delim(
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/dist_cgi_order.bed",
+  header = FALSE
+  )
+```
+
+Because I was dumb and took the labels off when I made these originally:
+```{r labelling}
+gene_info <- rbind( prox, dist )
+colnames( gene_info ) <- c( "uniq_id", "chrom", "cpg_s", "cpg_e",
+                            "cpg_num", "gene_s", "gene_e",
+                            "strand", "name", "ex2in", "gene_l",
+                            "cpg_l", "TSS_3prime", "prime5_TSS",
+                            "TSS_ex", "TSS_skew", "CGI3_skew",
+                            "TES_skew", "CGI5_skew", "x2in_skew",
+                            "simple_skew_class")
+```
+
+Do I want scaled or non-scaled graphs? Let's do both. Paula said to stop including
+chrX so I'll also filter that.
+
+```{r making beds}
+gene_info_p <- gene_info |> filter( strand == "+" & chrom != "chrX" )
+gene_info_m <- gene_info |> filter( strand == "-" & chrom != "chrX" )
+
+TSS_CGI_E_p <- gene_info_p |>
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+
+CGI_S_TSS_p <- gene_info_p |>
+  select( c("chrom",  "cpg_s", "gene_s", "uniq_id", "TSS_skew", "strand") )
+
+CGI_S_minus_800_p <- gene_info_p |>
+  select( c("chrom",  "cpg_e",  "cpg_s", "uniq_id", "TSS_skew", "strand") )
+CGI_S_minus_800_p[[2]] <- CGI_S_minus_800_p[[3]] - 800
+
+CGI_E_plus_800_p <- gene_info_p |>
+  select( c("chrom",  "cpg_e", "gene_e", "uniq_id", "TSS_skew", "strand") )
+CGI_E_plus_800_p[[3]] <- CGI_E_plus_800_p[[2]] + 800
+
+#everything is flipped in minus
+TSS_CGI_E_m <- gene_info_m |>
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+
+CGI_S_TSS_m <- gene_info_m |>
+  select( c("chrom", "gene_e",  "cpg_e", "uniq_id", "TSS_skew", "strand") )
+
+CGI_S_minus_800_m <- gene_info_m |>
+  select( c("chrom",  "cpg_e", "gene_e", "uniq_id", "TSS_skew", "strand") )
+CGI_S_minus_800_m[[3]] <- CGI_S_minus_800_m[[2]] + 800
+
+CGI_E_plus_800_m <- gene_info_m |>
+  select( c("chrom", "gene_s", "cpg_s", "uniq_id", "TSS_skew", "strand") )
+CGI_E_plus_800_m[[2]] <- CGI_E_plus_800_m[[3]] - 800
+
+plus_list <- list(
+  TSS_CGI_E_p,
+  CGI_S_TSS_p,
+  CGI_S_minus_800_p,
+  CGI_E_plus_800_p
+  )
+
+minus_list <- list(
+  TSS_CGI_E_m,
+  CGI_S_TSS_m,
+  CGI_S_minus_800_m,
+  CGI_E_plus_800_m
+  )
+
+for (i in seq_along( plus_list ) ) {
+  colnames( plus_list[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+
+for (i in seq_along( minus_list ) ) {
+  colnames( minus_list[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+
+#since these bw aren't stranded, I can merge these (but they needed to have the same colnames first).
+bed_list = list()
+bed_list[[1]] <- rbind( plus_list[[1]], minus_list[[1]] )
+bed_list[[2]] <- rbind( plus_list[[2]], minus_list[[2]] )
+bed_list[[3]] <- rbind( plus_list[[3]], minus_list[[3]] )
+bed_list[[4]] <- rbind( plus_list[[4]], minus_list[[4]] )
+```
+
+Okay, now the BWs.
+```{r bws}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE173374_Polenkowski_2021_HEK293T_TTseq/Bigwigs/"
+BWs <- list(
+  paste0(
+    DIR,
+    "GSM6257288_TT-seq_shCtrl_10min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257289_TT-seq_shCtrl_20min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257290_TT-seq_shCtrl_30min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257291_TT-seq_shCtrl_40min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257292_TT-seq_shTHOC5_10min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257293_TT-seq_shTHOC5_20min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257294_TT-seq_shTHOC5_30min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257295_TT-seq_shTHOC5_40min.bigwig"
+    )
+)
+```
+
+# ```{r}
+#     output <- score_matrix(
+#       bed = bed_list[[1]],
+#       readsource = BWs[[1]],
+#       method = "bi_anch",
+#       n = 40,
+#       ignorestrand = TRUE,
+#       bam_or_bw = "bw"
+#       )
+# ```
+i think i see what i did. List structure is 22 elements of 2 elements each, when my function needs 2 elements of 22 elements each to work. How to get this, though? I have to iterate over chroms, and I have to return two vars. So my best odds are figuring out a 
+See this: https://stackoverflow.com/questions/15263146/revert-list-structure
+OPs winning function was:
+revert_list_str_4 <- function( ls ){
+x <- lapply(ls, '[', names( ls[[1]] ) ) # retrieve subelements in the same order.
+apply( do.call(rbind, x), 2, as.list ) #stack and reslice
+}
+Obviously once I've fixed the code the above code won't have the problem anymore which is why I've commented it out. Will we have problems if the lists are unnamed?
+Could work around it if so but good to check.
+
+Okay, add that to utility functions as 'invert_list' and try it out.
+
+```{r}
+trial_LoL_1 <- list( a = list( d = 1, e = 2, f = 3 ), b = list( d = 4, e = 5, f = 6 ), c = list( d = 7, e = 8, f = 9 )  )
+print( paste( "element 1", trial_LoL_1[[1]] ) )
+print( paste( "element 3.3", trial_LoL_1[[3]][[3]] ) )
+
+trial_flipped_1 <- invert_list( trial_LoL_1 )
+print( paste( "element 1", trial_flipped_1[[1]] ) )
+print( paste( "element 3.3", trial_flipped_1[[3]][[3]] ) )
+
+# trial_LoL_2 <- list( list( 1, 2, 3 ), list( 4, 5, 6 ), list( 7, 8, 9 )  )
+# print( paste( "element 1", trial_LoL_2[[1]] ) )
+# print( paste( "element 3.3", trial_LoL_2[[3]][[3]] ) )
+# 
+# trial_flipped_2 <- invert_list( trial_LoL_2 )
+# print( paste( "element 1", trial_flipped_2[[1]] ) )
+# print( paste( "element 3.3", trial_flipped_2[[3]][[3]] ) )
+
+```
+Doesn't work with unnamed lists, but works beautifully with appropriately named ones, which I can implement easily into my script.
+
+Alright, let's see if that returns a good list now before restoring the commented out code.
+# ```{r}
+# output <- score_matrix(
+#   bed = bed_list[[1]],
+#   readsource = BWs[[1]],
+#   method = "bi_anch",
+#   n = 40,
+#   ignorestrand = TRUE,
+#   bam_or_bw = "bw"
+#   )
+# ```
+:) Works beautifully.
+
+```{r}
+    output <- score_matrix(
+      bed = bed_list[[1]],
+      readsource = BWs[[1]],
+      method = "bi_anch",
+      n = 40,
+      ignorestrand = TRUE,
+      bam_or_bw = "bw"
+      )
+```
+Awesome. Now for analyzing all of them:
+
+
+
+```{r scaled}
+scaled_list <- bed_list[ 1:2 ]
+#preallocate memory for a List of Lists
+scaled_output_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+
+for ( bed in seq_along( scaled_list ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    scaled_output_LoL[[bed]][[bw]] <- score_matrix(
+      bed = bed_list[[bed]],
+      readsource = BWs[[bw]],
+      method = "bi_anch",
+      n = 40,
+      ignorestrand = TRUE,
+      bam_or_bw = "bw"
+      )
+  }
+}
+
+```
+
+
+
+```{r noscale_800}
+noscaled_list_800 <- bed_list[ c(3:4) ]
+noscaled_output_800_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+
+for ( bed in seq_along( noscaled_list_800 ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    noscaled_output_800_LoL[[bed]][[bw]] <- score_matrix(
+      bed = bed_list[[bed]],
+      readsource = BWs[[bw]],
+      b = 0,
+      a = 800,
+      bs = 20,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+Okay, now I need to make the tables to graph. Probably bring out of list form for this for easier parsing.
+So the data is... base level bws 1-8, split into the various beds. Is it in dif order? Must be because they're same lengths but dif names when previewed. So just sort them.
+
+```{r}
+Ctrl_10min <- cbind(
+  noscaled_output_800_LoL[[1]][[1]][order(uniq_id)],
+  scaled_output_LoL[[2]][[1]][order(uniq_id)],
+  scaled_output_LoL[[1]][[1]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[1]][order(uniq_id)]
+  )
+Ctrl_20min <- cbind(
+  noscaled_output_800_LoL[[1]][[2]][order(uniq_id)],
+  scaled_output_LoL[[2]][[2]][order(uniq_id)],
+  scaled_output_LoL[[1]][[2]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[2]][order(uniq_id)]
+  )
+Ctrl_30min <- cbind(
+  noscaled_output_800_LoL[[1]][[3]][order(uniq_id)],
+  scaled_output_LoL[[2]][[3]][order(uniq_id)],
+  scaled_output_LoL[[1]][[3]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[3]][order(uniq_id)]
+  )
+Ctrl_40min <- cbind(
+  noscaled_output_800_LoL[[1]][[4]][order(uniq_id)],
+  scaled_output_LoL[[2]][[4]][order(uniq_id)],
+  scaled_output_LoL[[1]][[4]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[4]][order(uniq_id)]
+  )
+Thoc5_10min <- cbind(
+  noscaled_output_800_LoL[[1]][[5]][order(uniq_id)],
+  scaled_output_LoL[[2]][[5]][order(uniq_id)],
+  scaled_output_LoL[[1]][[5]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[5]][order(uniq_id)]
+  )
+Thoc5_20min <- cbind(
+  noscaled_output_800_LoL[[1]][[6]][order(uniq_id)],
+  scaled_output_LoL[[2]][[6]][order(uniq_id)],
+  scaled_output_LoL[[1]][[6]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[6]][order(uniq_id)]
+  )
+Thoc5_30min <- cbind(
+  noscaled_output_800_LoL[[1]][[7]][order(uniq_id)],
+  scaled_output_LoL[[2]][[7]][order(uniq_id)],
+  scaled_output_LoL[[1]][[7]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[7]][order(uniq_id)]
+  )
+Thoc5_40min <- cbind(
+  noscaled_output_800_LoL[[1]][[8]][order(uniq_id)],
+  scaled_output_LoL[[2]][[8]][order(uniq_id)],
+  scaled_output_LoL[[1]][[8]][order(uniq_id)],
+  noscaled_output_800_LoL[[2]][[8]][order(uniq_id)]
+  )
+
+
+
+```
+
+Now I'm going to list them again, haha. It is actually the easiest way to trim the columns / label them, though.
+
+```{r}
+tab_ls <- list( ctrl_10 = Ctrl_10min, ctrl_20 = Ctrl_20min,
+                ctrl_30 = Ctrl_30min, ctrl_40 = Ctrl_40min,
+                thoc5_10 = Thoc5_10min, thoc5_20 = Thoc5_20min,
+                thoc5_30 = Thoc5_30min, thoc5_40 = Thoc5_40min)
+coln <- unlist(list( "ID", "chrom", "start", "end", "score", "strand", seq_len( 160 ) ))
+for (i in seq_along(tab_ls)){
+  tab_ls[[i]] <- tab_ls[[i]][,c(1:46, 53:92, 99:138, 145:184)]
+  colnames(tab_ls[[i]]) <- coln
+  tab_ls[[i]]$ID <- names(tab_ls)[[i]]
+}
+
+jointtab <- do.call(rbind, tab_ls)
+```
+
+```{r}
+    long_tab <- melt(jointtab, na.rm=TRUE, id.vars = c("ID", "chrom", "start", "end", "score", "strand"))
+    mean_tab <- long_tab[, .(mean_score = mean(value)), by = list(variable, ID)]
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+mean_tab_idsplit <- mean_tab |> separate_wider_delim( ID, delim = "_", names = c("condition", "time"))
+mean_tab_idsplit$bins <- as.numeric(mean_tab_idsplit$variable)
+```
+
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+geom_tt <- mean_tab_idsplit |> ggplot( aes( x = bins, y = mean_score, color = time, shape = condition)) +
+      geom_point() +
+      mytheme +
+      ggtitle(label="TSS_CpG_end_scaled_exact") +
+  facet_wrap(~time)
+geom_tt
+```
+
+Ugh. I'm sure the numbers are accurate bc I'd double checked in IGV in the trialling function for every possible variant, but the scaling just doesn't make nice graphs. Seriously, what were Wendy and Josh doing to make that look good? Also, I'm an idiot who forgot to include the classes. Bring it into a new file to fix it and call this one done bc it's messy.

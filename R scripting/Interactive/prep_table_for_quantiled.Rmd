@@ -1,0 +1,305 @@
+---
+title: "Timecourse TTseq2"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r source, message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+```
+
+```{r genes}
+prox <- read.delim( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/prox_tss_order.bed",
+  header = FALSE
+  )
+dist <- read.delim(
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/dist_cgi_order.bed",
+  header = FALSE
+  )
+```
+
+
+Because I was dumb and took the labels off when I made these originally:
+```{r labelling}
+gene_info <- rbind( prox, dist )
+colnames( gene_info ) <- c( "uniq_id", "chrom", "cpg_s", "cpg_e",
+                            "cpg_num", "gene_s", "gene_e",
+                            "strand", "name", "ex2in", "gene_l",
+                            "cpg_l", "TSS_3prime", "prime5_TSS",
+                            "TSS_ex", "TSS_skew", "CGI3_skew",
+                            "TES_skew", "CGI5_skew", "x2in_skew",
+                            "simple_skew_class")
+```
+
+Bed filtering 1
+```{r}
+gene_info_p <- gene_info |> filter( strand == "+" & chrom != "chrX" )
+gene_info_m <- gene_info |> filter( strand == "-" & chrom != "chrX" )
+```
+
+Let's skip the scaled stuff for now. I'm not sure what josh/wendy did to make them match up, because I've checked the numbers, I've literally counted reads in IGV. So all I want is TSS-centered and 3' CGI centered.
+
+```{r}
+TSS_CGI_E_prox_p <- gene_info_p |>
+  filter(simple_skew_class=="Prox") |> 
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_E_prox_m <- gene_info_m |>
+  filter(simple_skew_class=="Prox") |> 
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+
+TSS_CGI_E_dist_p <- gene_info_p |>
+  filter(simple_skew_class=="Dist") |> 
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_E_dist_m <- gene_info_m |>
+  filter(simple_skew_class=="Dist") |> 
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+```
+
+```{r}
+tab_ls <- list(
+  TSS_CGI_E_prox_p,
+  TSS_CGI_E_prox_m,
+  TSS_CGI_E_dist_p,
+  TSS_CGI_E_dist_m
+)
+for (i in seq_along( tab_ls ) ) {
+  colnames( tab_ls[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+```
+
+```{r}
+TSS_tab <- list(rbind(tab_ls[[1]], tab_ls[[2]]), rbind(tab_ls[[3]], tab_ls[[4]]))
+tmp_ls <- tab_ls
+tmp_ls[[1]]$start <- tmp_ls[[1]]$end - 1
+tmp_ls[[2]]$end <- tmp_ls[[2]]$start + 1
+tmp_ls[[3]]$start <- tmp_ls[[3]]$end - 1
+tmp_ls[[4]]$end <- tmp_ls[[4]]$start + 1
+CGI_tab <- list(rbind(tmp_ls[[1]], tmp_ls[[2]]), rbind(tmp_ls[[3]], tmp_ls[[4]]))
+```
+
+```{r bws}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE173374_Polenkowski_2021_HEK293T_TTseq/Bigwigs/"
+BWs <- list(
+  paste0(
+    DIR,
+    "GSM6257288_TT-seq_shCtrl_10min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257289_TT-seq_shCtrl_20min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257290_TT-seq_shCtrl_30min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257291_TT-seq_shCtrl_40min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257292_TT-seq_shTHOC5_10min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257293_TT-seq_shTHOC5_20min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257294_TT-seq_shTHOC5_30min.bigwig"
+    ),
+  paste0(
+    DIR,
+    "GSM6257295_TT-seq_shTHOC5_40min.bigwig"
+    )
+)
+```
+
+```{r}
+TSS_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+for ( bed in seq_along( TSS_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    TSS_LoL[[bed]][[bw]] <- score_matrix(
+      bed = TSS_tab[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+```{r}
+CGI_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 2 )
+for ( bed in seq_along( CGI_tab ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    CGI_LoL[[bed]][[bw]] <- score_matrix(
+      bed = CGI_tab[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+Okay, now how to quantile them? Need to do it before getting the mean, so merge them back to the parent file using the uniq id and the bins. We'll get ctrl10-40 and thoc510-40 columns, plus a bins column, plus prox or dist, plus tss or cgi3. I realize that sounds like a lot but it's the most straightforward way to do this.
+
+I need to classify these BEFORE I pivot table to long, though. If I do it after R consistently crashes. So, plan. Classify TSS/CGI, then I think I can combine them w rbind.
+then prox/dist, combine with rbind. Clear TSS/CGI from memory.
+then ctrl/thoc5, then combine. Clear prox/dist from memory.
+then time, then combine. clear ctrl/thoc5 from memory.
+pivot first then merge or vice versa? That one might be trial and error. Also trim down gene info tab a little for that - don't need chrX, don't need exon data for example - make as sparse as can be useful. Or maybe I could quantile the genes first then use that to split the big table. Just save the big table somewhere, separate this file from getting quantiles and graphing.
+
+```{r}
+TSS_list <- unlist(TSS_LoL, recursive = F)
+CGI_list <- unlist(CGI_LoL, recursive = F)
+
+for (i in seq_along(TSS_list)){ TSS_list[[i]]$loc <- "TSS" }
+for (i in seq_along(CGI_list)){ CGI_list[[i]]$loc <- "CGI" }
+
+TSSCGI <- list(
+  rbind(TSS_list[[1]], CGI_list[[1]]),
+  rbind(TSS_list[[2]], CGI_list[[2]]),
+  rbind(TSS_list[[3]], CGI_list[[3]]),
+  rbind(TSS_list[[4]], CGI_list[[4]]),
+  rbind(TSS_list[[5]], CGI_list[[5]]),
+  rbind(TSS_list[[6]], CGI_list[[6]]),
+  rbind(TSS_list[[7]], CGI_list[[7]]),
+  rbind(TSS_list[[8]], CGI_list[[8]]),
+  rbind(TSS_list[[9]], CGI_list[[9]]),
+  rbind(TSS_list[[10]], CGI_list[[10]]),
+  rbind(TSS_list[[11]], CGI_list[[11]]),
+  rbind(TSS_list[[12]], CGI_list[[12]]),
+  rbind(TSS_list[[13]], CGI_list[[13]]),
+  rbind(TSS_list[[14]], CGI_list[[14]]),
+  rbind(TSS_list[[15]], CGI_list[[15]]),
+  rbind(TSS_list[[16]], CGI_list[[16]])
+)
+
+rm(TSS_list)
+rm(CGI_list)
+```
+
+Next, prox/dist.
+```{r}
+prox_list <- list(
+  TSSCGI[[1]],
+  TSSCGI[[2]],
+  TSSCGI[[3]],
+  TSSCGI[[4]],
+  TSSCGI[[5]],
+  TSSCGI[[6]],
+  TSSCGI[[7]],
+  TSSCGI[[8]]
+)
+dist_list <- list(
+  TSSCGI[[9]],
+  TSSCGI[[10]],
+  TSSCGI[[11]],
+  TSSCGI[[12]],
+  TSSCGI[[13]],
+  TSSCGI[[14]],
+  TSSCGI[[15]],
+  TSSCGI[[16]]
+)
+
+rm(TSSCGI)
+
+for (i in seq_along(prox_list)){ prox_list[[i]]$class_used <- "prox" }
+for (i in seq_along(dist_list)){ dist_list[[i]]$class_used <- "dist" }
+
+PROXDIST <- list(
+  rbind(prox_list[[1]], dist_list[[1]]),
+  rbind(prox_list[[2]], dist_list[[2]]),
+  rbind(prox_list[[3]], dist_list[[3]]),
+  rbind(prox_list[[4]], dist_list[[4]]),
+  rbind(prox_list[[5]], dist_list[[5]]),
+  rbind(prox_list[[6]], dist_list[[6]]),
+  rbind(prox_list[[7]], dist_list[[7]]),
+  rbind(prox_list[[8]], dist_list[[8]])  
+)
+
+rm(prox_list)
+rm(dist_list)
+```
+
+condition
+```{r}
+ctrl_list <- list(
+  PROXDIST[[1]],
+  PROXDIST[[2]],
+  PROXDIST[[3]],
+  PROXDIST[[4]]
+)
+thoc5_list <- list(
+  PROXDIST[[5]],
+  PROXDIST[[6]],
+  PROXDIST[[7]],
+  PROXDIST[[8]]
+)
+
+rm(PROXDIST)
+
+for (i in seq_along(ctrl_list)){ ctrl_list[[i]]$condition <- "ctrl" }
+for (i in seq_along(thoc5_list)){ thoc5_list[[i]]$condition <- "thoc5" }
+
+CTRLTHOC5 <- list(
+  rbind(ctrl_list[[1]], thoc5_list[[1]]),
+  rbind(ctrl_list[[2]], thoc5_list[[2]]),
+  rbind(ctrl_list[[3]], thoc5_list[[3]]),
+  rbind(ctrl_list[[4]], thoc5_list[[4]])
+)
+
+rm(ctrl_list)
+rm(thoc5_list)
+```
+
+and finally, time.
+
+```{r}
+CTRLTHOC5[[1]]$time <- "10"
+CTRLTHOC5[[2]]$time <- "20"
+CTRLTHOC5[[3]]$time <- "30"
+CTRLTHOC5[[4]]$time <- "40"
+
+scored_tab <- do.call( rbind, CTRLTHOC5 )
+```
+Pulled this from the 'quantiled' file... technically didn't run this with this, but it makes more sense here.
+
+```{r genes}
+skew_classed <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+```{r}
+fully_labeled_test <- merge.data.table( skew_classed, scored_tab, by = "uniq_id" )
+```
+
+
+```{r}
+write_genetsv(fully_labeled_test, "TTseq_timecourse_skewclassed.txt", coln=TRUE)
+```
+
