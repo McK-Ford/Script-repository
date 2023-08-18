@@ -1,0 +1,796 @@
+---
+title: "Analysis of stranded/scaled timecourse TTseq"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library( tidyverse )
+```
+
+
+```{r}
+tab <- fread("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/Polenkowski_Timecourse_TTseq/TTseq_timecourse_scalednstranded.txt.gz")
+```
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+Okay, what types of graphs do I want? Overall by timecourse, split by length quantiles and raw len.
+I think maybe I can improve analyzing this by pivoting longer after I've summarized and summarizing w/ lapply. Because currently it's half a million rows.
+
+####
+Let's also grab the classless table. That one's straightforward.
+```{r}
+tmptab <- tab[, c( 21, 22, 28:429, 431 ) ] 
+sum_tab <- tmptab[, lapply(.SD, mean), by = list(loc, condition, timepoint, senseanti, simple_skew_class )]
+classless <- melt( sum_tab, na.rm = TRUE, id.vars = c( "loc", "condition", "timepoint", "senseanti", "simple_skew_class" ))
+```
+
+```{r}
+per0   <- quantile( tab$TSS_3prime, 0   )
+per20  <- quantile( tab$TSS_3prime, 0.2 )
+per40  <- quantile( tab$TSS_3prime, 0.4 )
+per60  <- quantile( tab$TSS_3prime, 0.6 )
+per80  <- quantile( tab$TSS_3prime, 0.8 )
+per100 <- quantile( tab$TSS_3prime, 1.0 )
+
+per0
+per20
+per40
+per60
+per80
+per100
+```
+Downstream
+```{r}
+len20per  <- tab[ TSS_3prime <= per20 ]
+len40per  <- tab[ TSS_3prime <= per40 & TSS_3prime > per20 ]
+len60per  <- tab[ TSS_3prime <= per60 & TSS_3prime > per40 ]
+len80per  <- tab[ TSS_3prime <= per80 & TSS_3prime > per60 ]
+len100per <- tab[ TSS_3prime  > per80 ]
+```
+
+Okay, 28 thru 427 is the bins. I also want to keeo timepoint (428), condition (429), senseanti (431), loc (22), and simple_skew_class (21)
+```{r}
+perlist <- list( len20per, len40per, len60per, len80per, len100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 21, 22, 28:429, 431 ) ] 
+    sum_tab <- tmptab[, lapply(.SD, mean), by = list(loc, condition, timepoint, senseanti, simple_skew_class )]
+    nlist[[per]] <- melt( sum_tab, na.rm = TRUE, id.vars = c( "loc", "condition", "timepoint", "senseanti", "simple_skew_class" ) )
+}
+
+rm( perlist )
+```
+Yeah, that runs way better. R doesn't like too many rows.
+```{r}
+nlist[[1]]$perc <- "20perc_len"
+nlist[[2]]$perc <- "40perc_len"
+nlist[[3]]$perc <- "60perc_len"
+nlist[[4]]$perc <- "80perc_len"
+nlist[[5]]$perc <- "100perc_len"
+
+len_quant_ds <- do.call( rbind, nlist )
+```
+
+###
+Finally, let's get the fixed length classes. Actually might be worth splitting the smaller classes more... (Histone-based, 250-500-750-1000-1250-1500-1500+?) Try it both ways so I can compare to the previous one.
+
+```{r}
+len500  <- tab[ TSS_3prime <= 500 ]
+len1000  <- tab[ TSS_3prime <= 1000 & TSS_3prime > 500 ]
+len2000  <- tab[ TSS_3prime <= 2000 & TSS_3prime > 1000 ]
+len3000  <- tab[ TSS_3prime <= 3000 & TSS_3prime > 2000 ]
+lenbig <- tab[ TSS_3prime  > 3000 ]
+```
+How many groups are there, need to correct for that (each gene will be represented once per). Sense/anti, 3 locs, 2 conditions, 4 timepoints. Also 2 skew classes but each gene is 1 or the other. So 2 x 3 x 2 x 4 = 48 combos.Or could just unique by gene id...
+```{r}
+length(unique(len500$uniq_id))
+length(unique(len1000$uniq_id))
+length(unique(len2000$uniq_id))
+length(unique(len3000$uniq_id))
+length(unique(lenbig$uniq_id))
+```
+I could have sworn there was more data in the longer classes than that in the other RMD, check it out.
+
+Just looked at it and... right, I'm a complete idiot. I forgot to correct the last one for number of groups. Alright, don't do this set of groups, the couple hundred genes in the longest group are less than I'd like to make conclusions based on.
+
+#and 7
+
+```{r}
+len250  <- tab[ TSS_3prime <= 250 ]
+len500  <- tab[ TSS_3prime <= 500 & TSS_3prime > 250 ]
+len750  <- tab[ TSS_3prime <= 750 & TSS_3prime > 500 ]
+len1000  <- tab[ TSS_3prime <= 1000 & TSS_3prime > 750 ]
+len1250  <- tab[ TSS_3prime <= 1250 & TSS_3prime > 1000 ]
+len1500 <- tab[ TSS_3prime <= 1500 & TSS_3prime > 1250 ]
+lenbig <- tab[ TSS_3prime  > 1500 ]
+```
+
+```{r}
+length(unique(len250$uniq_id))
+length(unique(len500$uniq_id))
+length(unique(len750$uniq_id))
+length(unique(len1000$uniq_id))
+length(unique(len1250$uniq_id))
+length(unique(len1500$uniq_id))
+length(unique(lenbig$uniq_id))
+```
+
+```{r}
+lenlist <- list( len250, len500, len750, len1000, len1250, len1500, lenbig )
+
+nlist <- list( 1:7 )
+
+for ( per in seq_along( lenlist ) ) {
+    tmptab <- lenlist[[per]][, c( 21, 22, 28:429, 431 ) ] 
+    sum_tab <- tmptab[, lapply(.SD, mean), by = list(loc, condition, timepoint, senseanti, simple_skew_class )]
+    nlist[[per]] <- melt( sum_tab, na.rm = TRUE, id.vars = c( "loc", "condition", "timepoint", "senseanti", "simple_skew_class" ) )
+}
+
+rm( lenlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "len250"
+nlist[[2]]$perc <- "len500"
+nlist[[3]]$perc <- "len750"
+nlist[[4]]$perc <- "len1000"
+nlist[[5]]$perc <- "len1250"
+nlist[[6]]$perc <- "len1500"
+nlist[[7]]$perc <- "lenbig"
+
+len_fixed_7_ds <- do.call( rbind, nlist )
+```
+Upstream
+```{r}
+per0   <- quantile( tab$prime5_TSS, 0   )
+per20  <- quantile( tab$prime5_TSS, 0.2 )
+per40  <- quantile( tab$prime5_TSS, 0.4 )
+per60  <- quantile( tab$prime5_TSS, 0.6 )
+per80  <- quantile( tab$prime5_TSS, 0.8 )
+per100 <- quantile( tab$prime5_TSS, 1.0 )
+
+per0
+per20
+per40
+per60
+per80
+per100
+```
+```{r}
+len20per  <- tab[ prime5_TSS <= per20 ]
+len40per  <- tab[ prime5_TSS <= per40 & TSS_3prime > per20 ]
+len60per  <- tab[ prime5_TSS <= per60 & TSS_3prime > per40 ]
+len80per  <- tab[ prime5_TSS <= per80 & TSS_3prime > per60 ]
+len100per <- tab[ prime5_TSS  > per80 ]
+```
+
+```{r}
+perlist <- list( len20per, len40per, len60per, len80per, len100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 21, 22, 28:429, 431 ) ] 
+    sum_tab <- tmptab[, lapply(.SD, mean), by = list(loc, condition, timepoint, senseanti, simple_skew_class )]
+    nlist[[per]] <- melt( sum_tab, na.rm = TRUE, id.vars = c( "loc", "condition", "timepoint", "senseanti", "simple_skew_class" ) )
+}
+
+rm( perlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "20perc_len"
+nlist[[2]]$perc <- "40perc_len"
+nlist[[3]]$perc <- "60perc_len"
+nlist[[4]]$perc <- "80perc_len"
+nlist[[5]]$perc <- "100perc_len"
+
+len_quant_us <- do.call( rbind, nlist )
+```
+
+Since most of the upstream edges are within ~600 bp, for the upstream fixed let's just do 250, 500, 750, 1000, and 1000+.
+
+```{r}
+len250  <- tab[ prime5_TSS <= 250 ]
+len500  <- tab[ prime5_TSS <= 500 & prime5_TSS > 250 ]
+len750  <- tab[ prime5_TSS <= 750 & prime5_TSS > 500 ]
+len1000  <- tab[ prime5_TSS <= 1000 & prime5_TSS > 750 ]
+lenbig <- tab[ prime5_TSS  > 1000 ]
+```
+
+```{r}
+length(unique(len250$uniq_id))
+length(unique(len500$uniq_id))
+length(unique(len750$uniq_id))
+length(unique(len1000$uniq_id))
+length(unique(lenbig$uniq_id))
+```
+
+```{r}
+lenlist <- list( len250, len500, len750, len1000, lenbig )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( lenlist ) ) {
+    tmptab <- lenlist[[per]][, c( 21, 22, 28:429, 431 ) ] 
+    sum_tab <- tmptab[, lapply(.SD, mean), by = list(loc, condition, timepoint, senseanti, simple_skew_class )]
+    nlist[[per]] <- melt( sum_tab, na.rm = TRUE, id.vars = c( "loc", "condition", "timepoint", "senseanti", "simple_skew_class" ) )
+}
+
+rm( lenlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "len250"
+nlist[[2]]$perc <- "len500"
+nlist[[3]]$perc <- "len750"
+nlist[[4]]$perc <- "len1000"
+nlist[[5]]$perc <- "lenlong"
+
+len_fixed_5_us <- do.call( rbind, nlist )
+```
+
+
+Okay, I now have len fixed 7 and len quant for downstream. I have classless for both. I also have a upstream split and an upstream len quant.
+
+```{r}
+len_quant_ds$Bins <- (as.numeric( len_quant_ds$variable ) - 100) * 10
+len_quant_us$Bins <- (as.numeric( len_quant_us$variable ) - 100) * 10
+len_fixed_5_us$Bins <- (as.numeric( len_fixed_5_us$variable )  - 100) * 10
+len_fixed_7_ds$Bins <- (as.numeric( len_fixed_7_ds$variable )  - 100) * 10
+classless$Bins <- (as.numeric( classless$variable )  - 100) * 10
+
+len_quant_ds[loc == "CGI5"]$Bins <- len_quant_ds[loc == "CGI5"]$Bins - 2000
+len_quant_us[loc == "CGI5"]$Bins <- len_quant_us[loc == "CGI5"]$Bins - 2000
+len_fixed_5_us[loc == "CGI5"]$Bins <- len_fixed_5_us[loc == "CGI5"]$Bins - 2000
+len_fixed_7_ds[loc == "CGI5"]$Bins <- len_fixed_7_ds[loc == "CGI5"]$Bins - 2000
+classless[loc == "CGI5"]$Bins <- classless[loc == "CGI5"]$Bins - 2000
+#CGI5 covers -3kb - +1 kb
+len_quant_ds$mean_score <- len_quant_ds$value
+len_quant_us$mean_score <- len_quant_us$value
+len_fixed_5_us$mean_score <- len_fixed_5_us$value
+len_fixed_7_ds$mean_score <- len_fixed_7_ds$value
+classless$mean_score <- classless$value
+```
+##############################################################
+
+Classless (in terms of perc, not prox/dist), sense, TSS, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Classless (in terms of perc, not prox/dist), sense, TSS, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Dist only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+###
+
+Yeah, worth combining again.
+Classless (in terms of perc, not prox/dist), antisense, TSS, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+Classless (in terms of perc, not prox/dist), antisense, TSS, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Dist only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+So overall, dist and prox skewed genes have matching amounts of antisense TX but a 10 fold dif in sense tx. When thoc5 is ko, there is an overal increase in tx accumulation at 10 and 30 min but not at 20 and 40. I think that's probably not a scaling issue because if so it would be a more even increase overall, no? Pulsing is only seen in sense proximal and I do think it changes when thoc5 is KOd.
+
+######################################################
+
+Downstream edge
+
+Classless (in terms of perc, not prox/dist), sense, 3'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI3" & senseanti == "sense" & simple_skew_class == "Prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI3_ttseq_sense_prox") +
+      xlab(label="Distance from CGI 3' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+Okay, that's not entirely what I expected based on the TSS graphs.
+
+Classless (in terms of perc, not prox/dist), sense, 3'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Dist only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI3" & senseanti == "sense" & simple_skew_class == "Dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI3_ttseq_sense_dist") +
+      xlab(label="Distance from CGI 3' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Based on the y axis numbers it's def stacking up at the edge.
+
+Classless (in terms of perc, not prox/dist), antisense, 3'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI3" & senseanti == "antisense" & simple_skew_class == "Prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI3_ttseq_antisense_prox") +
+      xlab(label="Distance from CGI 3' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Hmm.
+
+Classless (in terms of perc, not prox/dist), antisense, 3'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Dist only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI3" & senseanti == "antisense" & simple_skew_class == "Dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI3_ttseq_antisense_dist") +
+      xlab(label="Distance from CGI 3' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+##########################
+Upstream edge
+
+Classless (in terms of perc, not prox/dist), sense, 5'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI5" & senseanti == "sense" & simple_skew_class == "Prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI5_ttseq_sense_prox") +
+      xlab(label="Distance from CGI 5' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+Classless (in terms of perc, not prox/dist), sense, 5'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI5" & senseanti == "sense" & simple_skew_class == "Dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI5_ttseq_sense_dist") +
+      xlab(label="Distance from CGI 5' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+Classless (in terms of perc, not prox/dist), antisense, 5'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI5" & senseanti == "antisense" & simple_skew_class == "Prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI5_ttseq_antisense_prox") +
+      xlab(label="Distance from CGI 5' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+Classless (in terms of perc, not prox/dist), antisense, 5'CGI, -1 kb 3 kb, BOTH THOC5KO and CTRL
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- classless |> 
+  filter( loc == "CGI5" & senseanti == "antisense" & simple_skew_class == "Dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = condition )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI5_ttseq_antisense_dist") +
+      xlab(label="Distance from CGI 5' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+There's definitely a general feature of signal increasing in the thoc5ko in timepoints 10 and 30.
+
+#####
+Quantiled based on downstream distance
+######
+len quant ds, sense, TSS, -1 kb 3 kb, ctrl
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_ctrl_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Figures, based on what we saw last time. Long outliers do something weird.
+
+len quant ds, sense, TSS, -1 kb 3 kb, thoc5 ko
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "thoc5ko") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_thoc5ko_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len quant ds, sense, TSS, -1 kb 3 kb, ctrl
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Dist" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_ctrl_Dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len quant ds, sense, TSS, -1 kb 3 kb, thoc5 ko
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Dist" & condition == "thoc5ko") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_thoc5ko_Dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len quant ds, antisense, TSS, -1 kb 3 kb, ctrl
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Prox" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_ctrl_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Okay, good. I'm not going to do all the antisense based on downstream quantiling, as it doesn't really make sense at the TSS. But this shows the weird outlier thing for prox is only a downstream thing.
+
+Downstream edge also shouldn't split, so I'm only going to graph the one.
+
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "CGI3" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI3_ttseq_sense_ctrl_prox") +
+      xlab(label="Distance from CGI 3' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Yeah... there's some outlier genes in the longest CGI is the best explanation I can think of.
+
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "ctrl" & perc != "100perc_len") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_ctrl_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Of course now there's no pulsing here?
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "thoc5ko" & perc != "100perc_len") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_thoc5ko_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+Okay, that's interesting. So the pulsing, idk what to do about that, but the proximal becomes responsive to the CGI edge when thoc5 is ko. Is it really a dif responsiveness for dist vs prox?
+
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "CGI3" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "ctrl" & perc != "100perc_len") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI3_ttseq_sense_ctrl_prox") +
+      xlab(label="Distance from CGI 3' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "CGI3" & senseanti == "sense" & simple_skew_class == "Dist" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI3_ttseq_sense_ctrl_dist") +
+      xlab(label="Distance from CGI 3' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+Upstream edge
+len quant ds, antisense, CGI5, -1 kb 3 kb, ctrl
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_quant_ds |> 
+  filter( loc == "CGI5" & senseanti == "antisense" & simple_skew_class == "Prox" & condition == "ctrl" & perc != "100perc_len") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="CGI5_ttseq_antisense_ctrl_prox") +
+      xlab(label="Distance from CGI 5' (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+As expected
+#########################
+len fixed 7 ds, sense, TSS, -1 kb 3 kb, ctrl
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_ctrl_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len fixed 7 ds, sense, TSS, -1 kb 3 kb, ctrl
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "ctrl"  & perc != "lenbig" & perc != "len1000") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_ctrl_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+yeah i need to figure out something to do about the outlier in len1000 and the one in lenbig. Maybe go back to trimmed mean (try 1%)?
+
+len fixed 7 ds, sense, TSS, -1 kb 3 kb, ctrl
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Dist" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_ctrl_dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+also fix the colors if i exclude things.
+
+len fixed 7 ds, sense, TSS, -1 kb 3 kb, thoc5ko
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Prox" & condition == "thoc5ko"  & perc != "lenbig" & perc != "len1000") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_thoc5ko_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len fixed 7 ds, sense, TSS, -1 kb 3 kb, thoc5ko
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & senseanti == "sense" & simple_skew_class == "Dist" & condition == "thoc5ko") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_sense_thoc5ko_dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+okay how does this stuff behave upstream?
+
+#####################
+
+len fixed 5 us, antisense, TSS, -1 kb 3 kb, ctrl
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_5_us |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Prox" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_ctrl_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len fixed 5 us, antisense, TSS, -1 kb 3 kb, ctrl
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_5_us |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Dist" & condition == "ctrl" & perc != "len750") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_ctrl_dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len fixed 5 us, antisense, TSS, -1 kb 3 kb, thoc5ko
+Prox only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_5_us |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Prox" & condition == "thoc5ko") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_thoc5ko_prox") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+len fixed 5 us, antisense, TSS, -1 kb 3 kb, thoc5ko
+dist only bc as dist is lower signal than prox 
+```{r}
+geom <- len_fixed_5_us |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Dist" & condition == "thoc5ko" & perc != "len750") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_thoc5ko_dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

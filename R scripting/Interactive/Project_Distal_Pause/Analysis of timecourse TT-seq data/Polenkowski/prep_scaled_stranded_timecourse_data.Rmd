@@ -1,0 +1,208 @@
+---
+title: "Analysis with scaled stranded timecourse data"
+output: html_notebook
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+source( "~/Script repository/R scripting/Graphing_Functions.R" )
+```
+
+```{r mygenes}
+mygenes <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+Bed filtering 1
+```{r bf1}
+gene_info_p <- mygenes |> filter( strand == "+" & chrom != "chrX" )
+gene_info_m <- mygenes |> filter( strand == "-" & chrom != "chrX" )
+```
+
+```{r split tabs}
+TSS_CGI_E_p <- gene_info_p |>
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+
+TSS_CGI_E_m <- gene_info_m |>
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+```
+
+```{r tab_ls}
+tss_ls <- list(
+  TSS_CGI_E_p,
+  TSS_CGI_E_m
+)
+for (i in seq_along( tss_ls ) ) {
+  colnames( tss_ls[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+```
+
+```{r adjust to actual start for cgi}
+cgi_ls <- tss_ls
+cgi_ls[[1]]$start <- cgi_ls[[1]]$end - 1
+cgi_ls[[2]]$end <- cgi_ls[[2]]$start + 1
+```
+
+```{r split tabs upstream}
+TSS_CGI_S_p <- gene_info_p |>
+  select( c("chrom", "cpg_s", "gene_s", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_S_m <- gene_info_m |>
+  select( c("chrom",  "gene_e", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+
+```
+
+```{r tab_ls2}
+tab_S_ls <- list(
+  TSS_CGI_S_p,
+  TSS_CGI_S_m
+)
+for (i in seq_along( tab_S_ls ) ) {
+  colnames( tab_S_ls[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+
+#as I want the 5' end to actually be 1 kb downstream and 3 kb upstream due to antisense orientation / tx, will say focal point is 2 kb upstream of actual focal point. This will let me use the same 'before 1 kb, after 3 kb' as with the others, as it will still cover the correct 4 kb then, instead of having to tell it 'before 3 kb, after 1 kb'. Would not work for bams as those are even more strand aware and flip.
+
+tab_S_ls[[1]]$start = tab_S_ls[[1]]$start - 2000
+tab_S_ls[[2]]$end = tab_S_ls[[2]]$end + 2000
+
+```
+
+There has got to be a better way to organize these lists than the one I did previously (like using do.call rbind a lot on the sublists?) Or trying to make less sublists with more merging/labeling as I go.
+
+```{r}
+tss_tab <- do.call(rbind, tss_ls)
+tss_tab$uniq_id <- paste0(tss_tab$uniq_id, "-TSS")
+
+cgi5_tab <- do.call(rbind, tab_S_ls)
+cgi5_tab$uniq_id <- paste0(cgi5_tab$uniq_id, "-CGI5")
+
+cgi3_tab <- do.call(rbind, cgi_ls)
+cgi3_tab$uniq_id <- paste0(cgi3_tab$uniq_id, "-CGI3")
+
+bed_tab <- rbind( tss_tab, cgi5_tab, cgi3_tab )
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/"
+
+ctrl_p <- list(
+  min10 = paste0( DIR, "TTseq_ctrl10_GSE173374.fwd.bw"    ),
+  min20 = paste0( DIR, "TTseq_ctrl20_GSE173374.fwd.bw"    ),
+  min30 = paste0( DIR, "TTseq_ctrl30_GSE173374.fwd.bw"    ),
+  min40 = paste0( DIR, "TTseq_ctrl40_GSE173374.fwd.bw"    )
+)
+
+thoc5_p <- list(
+  min10 = paste0( DIR, "TTseq_thoc5ko10_GSE173374.fwd.bw" ),
+  min20 = paste0( DIR, "TTseq_thoc5ko20_GSE173374.fwd.bw" ),
+  min30 = paste0( DIR, "TTseq_thoc5ko30_GSE173374.fwd.bw" ),
+  min40 = paste0( DIR, "TTseq_thoc5ko40_GSE173374.fwd.bw" )
+)
+
+BWs_p <- list( ctrl = ctrl_p, thoc5ko = thoc5_p )
+
+ctrl_m <- list(
+  min10 = paste0( DIR, "TTseq_ctrl10_GSE173374.rev.bw"    ),
+  min20 = paste0( DIR, "TTseq_ctrl20_GSE173374.rev.bw"    ),
+  min30 = paste0( DIR, "TTseq_ctrl30_GSE173374.rev.bw"    ),
+  min40 = paste0( DIR, "TTseq_ctrl40_GSE173374.rev.bw"    )
+)
+
+thoc5_m <- list(
+  min10 = paste0( DIR, "TTseq_thoc5ko10_GSE173374.rev.bw" ),
+  min20 = paste0( DIR, "TTseq_thoc5ko20_GSE173374.rev.bw" ),
+  min30 = paste0( DIR, "TTseq_thoc5ko30_GSE173374.rev.bw" ),
+  min40 = paste0( DIR, "TTseq_thoc5ko40_GSE173374.rev.bw" )
+)
+
+BWs_m <- list( ctrl = ctrl_m, thoc5ko = thoc5_m )
+
+BWs <- list( bw_f = BWs_p, bw_r = BWs_m )
+```
+
+The structure of the BWs is split +-, then ctrl/thocKO, then into the 4 BWs. 16 total.
+
+```{r scoring}
+LoL <- rep( list(  rep( list( vector( mode = "list", length = 4 )), 2)), 2 ) #preallocate a list
+
+for ( strand in seq_along( BWs ) ) { #2
+  for (condition in seq_along( BWs[[strand]] ) ) { #2
+    for ( bw in seq_along( BWs[[strand]][[condition]])) { #4
+      LoL[[strand]][[condition]][[bw]] <- score_matrix(
+      bed = bed_tab,
+      readsource = BWs[[strand]][[condition]][[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+      LoL[[strand]][[condition]][[bw]]$timepoint <- names(BWs[[strand]][[condition]])[[bw]]
+      LoL[[strand]][[condition]][[bw]]$condition <- names(BWs[[strand]])[[condition]]
+      LoL[[strand]][[condition]][[bw]]$bw_strand <- names(BWs)[[strand]]
+    }
+  }
+}
+```
+Okay, can I do call rbind these together?
+```{r}
+List_noL <- unlist(LoL, recursive = F)
+List_noL2 <- unlist(List_noL, recursive = F)
+scored_tab <- do.call(rbind, List_noL2)
+```
+628K lines, but it's a table. Three more things. Separate uniq ID column from type label, label sense vs antisense, and attach to the parent table.
+```{r}
+scored_tab$senseanti <- ifelse(
+  (
+    scored_tab$strand == "+" &
+      scored_tab$bw_strand == "bw_f"
+    )|(
+      scored_tab$strand == "-" &
+        scored_tab$bw_strand == "bw_r"
+      ),
+  "sense",
+  "antisense"
+  )
+```
+
+```{r}
+library(dplyr)
+scored_tab <- scored_tab |> separate_wider_delim(uniq_id, delim = "-", names = c("uniq_id", "loc"))
+```
+
+Oh for frick's sake, antisense genes have a - in their symbol, I picked a bad deliminator. So I want to use the last dash, see separate wider delim page on tidyverse for how I came to this.
+
+```{r}
+scored_tab <- scored_tab |> separate_wider_regex(uniq_id, c( uniq_id = ".*", "-", loc = ".*"))
+```
+
+
+```{r}
+setDT(scored_tab)
+fully_labeled <- merge.data.table( mygenes, scored_tab, by = "uniq_id" )
+```
+
+
+```{r}
+source( "~/Script repository/R scripting/Utility_Fns.R")
+write_genetsv(fully_labeled, "TTseq_timecourse_scalednstranded.txt", coln=TRUE)
+```
