@@ -1,0 +1,291 @@
+---
+title: "Analysis of Cell lines w/ and w/out H4K20me3"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/PEPPRO_SE/"
+MB231_pI <- read.delim(
+  paste0(DIR, "MB231/QC_hg38/MB231_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+MCF7_pI <- read.delim(
+  paste0(DIR, "MCF7/QC_hg38/MCF7_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+SUM159_pI <- read.delim(
+  paste0(DIR, "SUM159/QC_hg38/SUM159_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+T47D_pI <- read.delim(
+  paste0(DIR, "T47D/QC_hg38/T47D_pause_index.bed.gz"),
+  header = FALSE,
+  skipNul = TRUE
+  )
+```
+
+```{r}
+tab_lst <- list(MB231 = MB231_pI,
+               MCF7 = MCF7_pI,
+               SUM159 = SUM159_pI,
+               T47D = T47D_pI)
+for (i in seq_along(tab_lst)) {
+  colnames(tab_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand")
+  tab_lst[[i]] = tab_lst[[i]] |>
+    filter(tab_lst[[i]][[5]] < 1000)
+  plus = tab_lst[[i]] |>
+    filter(tab_lst[[i]][[6]] == "+")
+  plus$end = plus$start + 2000
+  plus$start = plus$start - 2000
+  minus = tab_lst[[i]] |>
+    filter(tab_lst[[i]][[6]] == "-")
+  minus$start = minus$end - 2000
+  minus$end = minus$end + 2000
+  tab_lst[[i]] = rbind(plus, minus)
+}
+MB231 <- tab_lst[[1]]
+MCF7 <- tab_lst[[2]]
+SUM159 <- tab_lst[[3]] 
+T47D <- tab_lst[[4]] 
+```
+
+
+```{r}
+write.table(
+  MB231,
+  file = "MB231_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+write.table(
+  MCF7,
+  file = "MCF7_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+write.table(
+  SUM159,
+  file = "SUM159_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+write.table(
+  T47D,
+  file = "T47D_promoters.tsv",
+  row.names = FALSE,
+  col.names = FALSE,
+  sep = "\t",
+  quote = FALSE
+  )
+```
+
+Okay, now I take these files into bluehive to run bedtools intersect on them.
+Did bedtools intersect -a promoters -b peaks -c, which means keep all promoters, report number of hits in peaks. Now bring them back in...
+
+```{r merged}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/Project_Cell_Lines/H4K20me3_status_pI/Merged_AB/Intersected_tabs/"
+MB231_merge <- read.delim(
+  paste0(DIR, "MB231_pI_MB231s.tsv"),
+  header = FALSE
+  )
+MCF7_merge <- read.delim(
+  paste0(DIR, "MCF7_pI_MCF7s.tsv"),
+  header = FALSE
+  )
+SUM159_merge <- read.delim(
+  paste0(DIR, "SUM159_pI_SUM159s.tsv"),
+  header = FALSE
+  )
+T47D_merge <- read.delim(
+  paste0(DIR, "T47D_pI_T47Ds.tsv"),
+  header = FALSE
+  )
+```
+
+```{r abcam}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/Project_Cell_Lines/H4K20me3_status_pI/Abcam/Intersected_peaks/"
+MB231_abcam <- read.delim(
+  paste0(DIR, "MB231_abcam_pI.tsv"),
+  header = FALSE
+  )
+MCF7_abcam <- read.delim(
+  paste0(DIR, "MCF7_abcam_pI.tsv"),
+  header = FALSE
+  )
+SUM159_abcam <- read.delim(
+  paste0(DIR, "SUM159_abcam_pI.tsv"),
+  header = FALSE
+  )
+T47D_abcam <- read.delim(
+  paste0(DIR, "T47D_abcam_pI.tsv"),
+  header = FALSE
+  )
+```
+
+```{r cellsignaling}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/Project_Cell_Lines/H4K20me3_status_pI/Cell_signalling/Intersected_peaks/"
+MB231_cell <- read.delim(
+  paste0(DIR, "MB231_cellsignaling_pI.tsv"),
+  header = FALSE
+  )
+MCF7_cell <- read.delim(
+  paste0(DIR, "MCF7_cellsignaling_pI.tsv"),
+  header = FALSE
+  )
+SUM159_cell <- read.delim(
+  paste0(DIR, "SUM159_cellsignaling_pI.tsv"),
+  header = FALSE
+  )
+T47D_cell <- read.delim(
+  paste0(DIR, "T47D_cellsignaling_pI.tsv"),
+  header = FALSE
+  )
+```
+
+```{r}
+library(biomaRt)
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "https://useast.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+```
+
+
+```{r}
+H4K20me3POS_lst <- list(MB231_merge = MB231_merge,
+               MCF7_merge = MCF7_merge,
+               SUM159_merge = SUM159_merge,
+               T47D_merge = T47D_merge,
+               MB231_abcam = MB231_abcam,
+               MCF7_abcam = MCF7_abcam,
+               SUM159_abcam = SUM159_abcam,
+               T47D_abcam = T47D_abcam,
+               MB231_cell = MB231_cell,
+               MCF7_cell = MCF7_cell,
+               SUM159_cell = SUM159_cell,
+               T47D_cell = T47D_cell)
+H4K20me3NEG_lst <- H4K20me3POS_lst
+for (i in seq_along(H4K20me3POS_lst)) {
+  colnames(H4K20me3POS_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand", "score")
+    annotLookup = getBM(
+    mart = mart,
+    attributes = c(
+      "hgnc_symbol",
+      "gene_biotype"),
+    filter = "hgnc_symbol",
+    values = H4K20me3POS_lst[[i]]$symbol,
+    uniqueRows=TRUE)
+  H4K20me3POS_lst[[i]] <- merge(H4K20me3POS_lst[[i]], annotLookup, by.x = "symbol",
+                     by.y = "hgnc_symbol", all = TRUE)
+ H4K20me3POS_lst[[i]] = H4K20me3POS_lst[[i]] |>
+    filter(H4K20me3POS_lst[[i]][[7]] > 0 & H4K20me3POS_lst[[i]][[8]] == "protein_coding")
+   print(
+    paste0(
+      "Length of POS ",
+      names(H4K20me3POS_lst)[[i]],
+      " is: ",
+      dim(H4K20me3POS_lst[[i]])[1]
+      )
+    )
+  colnames(H4K20me3NEG_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand", "score")
+  H4K20me3NEG_lst[[i]] <- merge(H4K20me3NEG_lst[[i]], annotLookup, by.x = "symbol",
+                     by.y = "hgnc_symbol", all = TRUE)
+  H4K20me3NEG_lst[[i]] = H4K20me3NEG_lst[[i]] |>
+    filter(H4K20me3NEG_lst[[i]][[7]] == 0 & H4K20me3NEG_lst[[i]][[8]] == "protein_coding")
+  print(
+    paste0(
+      "Length of NEG ",
+      names(H4K20me3NEG_lst)[[i]],
+      " is: ",
+      dim(H4K20me3NEG_lst[[i]])[1]
+      )
+    )
+}
+```
+
+So in general, most genes don't have an intersecting H4K20me3 peak in cell signalling, but many do in abcam. What portion is protein coding?
+
+
+```{r}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2, hjust=0.5),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+colors <- c("H4K20me3 Positive" = "blue", "H4K20me3 Negative" = "red")
+```
+
+```{r}
+H4K20me3pval_lst <- list(1:12)
+for (i in seq_along(H4K20me3POS_lst)) {
+  test = wilcox.test(x = H4K20me3POS_lst[[i]]$pI, y = H4K20me3NEG_lst[[i]]$pI, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+  H4K20me3pval_lst[[i]] = test$p.value
+}
+```
+
+So anyway, add p value to the plots? Need to look into further for proper display (probably will need to change these graphs for publishing anyway) so for now we'll just do element.text
+```{r}
+title_list <- list("MB231 (Merged Antibodies)",
+                   "MCF7 (Merged Antibodies)", 
+                   "SUM159 (Merged Antibodies)",
+                   "T47D (Merged Antibodies)",
+                   "MB231 (Abcam)", 
+                   "MCF7 (Abcam)",
+                   "SUM159 (Abcam)",
+                   "T47D (Abcam)",
+                   "MB231 (Cell Signalling)",
+                   "MCF7 (Cell Signalling)",
+                   "SUM159 (Cell Signalling)",
+                   "T47D (Cell Signalling)")
+gplot = title_list
+
+for (i in seq_along(H4K20me3POS_lst)) {
+  message(i)
+  gplot[[i]] <- local({
+    i <- i
+    gplot <- ggplot() +
+  stat_ecdf(geom="step", data = H4K20me3POS_lst[[i]], aes(pI, color = "H4K20me3 Positive")) +
+  stat_ecdf(geom="step", data = H4K20me3NEG_lst[[i]], aes(pI, color = "H4K20me3 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle(title_list[[i]]) +
+  scale_color_manual(values = colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank()) +
+  annotate("text", x = 0.8, y = 0.2, label = paste0("p=", signif(H4K20me3pval_lst[[i]], digits = 4)))
+    print(gplot)
+  })
+}
+```
+
+```{r}
+pdf(file = "cdf.pdf", width = 7)
+for (i in seq_along(gplot)) {print(gplot[[i]])}
+dev.off()
+```
+   
+   

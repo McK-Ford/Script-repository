@@ -1,0 +1,704 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+source("~/Script repository/R scripting/Utility_Fns.R")
+source( "~/Script repository/R scripting/Matrix_Fns.R" )
+```
+```{r}
+TTseq_timecourse <- fread( "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/Polenkowski_Timecourse_TTseq/TTseq_timecourse_skewclassed.txt.gz", header=TRUE, drop=c( 2,3,4,5,6,7,8,9,10,15,20,22,23,24,26 ) )
+```
+#############
+Let's quantile by skew at tss and skew at 3' CGI, independent of dist/prox, to see what we see. If we spot something we can always divide things up further. Then could quantile by prox dist difference.
+
+Alright, TSS skew to start with.
+```{r}
+per0   <- quantile( TTseq_timecourse$TSS_skew, 0   )
+per20  <- quantile( TTseq_timecourse$TSS_skew, 0.2 )
+per40  <- quantile( TTseq_timecourse$TSS_skew, 0.4 )
+per60  <- quantile( TTseq_timecourse$TSS_skew, 0.6 )
+per80  <- quantile( TTseq_timecourse$TSS_skew, 0.8 )
+per100 <- quantile( TTseq_timecourse$TSS_skew, 1.0 )
+
+per0
+per20
+per40
+per60
+per80
+per100
+```
+So now filter.
+```{r}
+TSS20per  <- TTseq_timecourse[ TSS_skew <= per20 ]
+TSS40per  <- TTseq_timecourse[ TSS_skew <= per40 & TSS_skew > per20 ]
+TSS60per  <- TTseq_timecourse[ TSS_skew <= per60 & TSS_skew > per40 ]
+TSS80per  <- TTseq_timecourse[ TSS_skew <= per80 & TSS_skew > per60 ]
+TSS100per <- TTseq_timecourse[ TSS_skew  > per80 ]
+```
+
+oh let's check how many dist and prox in each?
+```{r}
+print( "20th percentile dist vs prox" )
+dim( TSS20per[ simple_skew_class == "Dist"] )
+dim( TSS20per[ simple_skew_class == "Prox"] )
+
+print( "40th percentile dist vs prox" )
+dim( TSS40per[ simple_skew_class == "Dist"] )
+dim( TSS40per[ simple_skew_class == "Prox"] )
+
+print( "60th percentile dist vs prox" )
+dim( TSS60per[ simple_skew_class == "Dist"] )
+dim( TSS60per[ simple_skew_class == "Prox"] )
+
+print( "80th percentile dist vs prox" )
+dim( TSS80per[ simple_skew_class == "Dist"] )
+dim( TSS80per[ simple_skew_class == "Prox"] )
+
+print( "100th percentile dist vs prox" )
+dim( TSS100per[ simple_skew_class == "Dist"] )
+dim( TSS100per[ simple_skew_class == "Prox"] )
+```
+
+
+Great. Now I need to pivot and merge. (keep original tab potentially to compare to other tabs)
+
+```{r}
+perlist <- list( TSS20per, TSS40per, TSS60per, TSS80per, TSS100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 12:412, 414:415 ) ] #removed class used for now
+    long_tab <- melt( tmptab, na.rm = TRUE, id.vars = c( "loc", "condition", "time" ) )
+    nlist[[per]] <- long_tab[, .(mean_score = mean(value)), by = list(variable, loc, condition, time )]
+}
+
+rm( perlist )
+```
+(keep original IDs potentially to compare to other tabs)
+```{r}
+TSS20perIDs  <- TSS20per$uniq_id
+TSS40perIDs  <- TSS40per$uniq_id
+TSS60perIDs  <- TSS60per$uniq_id
+TSS80perIDs  <- TSS80per$uniq_id
+TSS100perIDs <- TSS100per$uniq_id
+
+rm( TSS20per, TSS40per, TSS60per, TSS80per, TSS100per )
+```
+
+```{r}
+nlist[[1]]$perc <- "20perc_TSS_skew"
+nlist[[2]]$perc <- "40perc_TSS_skew"
+nlist[[3]]$perc <- "60perc_TSS_skew"
+nlist[[4]]$perc <- "80perc_TSS_skew"
+nlist[[5]]$perc <- "100perc_TSS_skew"
+
+TSS_skew_quant <- do.call( rbind, nlist )
+```
+
+Alright, need to fix the bin names (. is currently representing -, and everything is prefixed by an X)
+
+```{r}
+colnames( TSS_skew_quant )[1] <- "Bins"
+TSS_skew_quant$Bins <- sub( "^X", "", TSS_skew_quant$Bins )
+TSS_skew_quant$Bins <- sub( "^\\.", "-", TSS_skew_quant$Bins )
+TSS_skew_quant$Bins <- as.numeric( TSS_skew_quant$Bins )
+TSS_skew_quant$time <- as.character( TSS_skew_quant$time )
+```
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+geom1_TSS_skew_quant <- TSS_skew_quant |> 
+  filter( loc == "TSS" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom1_TSS_skew_quant
+```
+So it's probably not a raw skew at the TSS thing since the mid percentile is the one with the most obvious waveform, which is also a 50/50 distal proximal region. Same pattern with CGI?
+
+```{r}
+geom2_TSS_skew_quant <- TSS_skew_quant |> 
+  filter( loc == "CGI" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom2_TSS_skew_quant
+```
+
+Yes, same effect.
+
+Okay, what about skew at the 3' edge? (I want to look at CGI length but let's go through this progressively.)
+
+
+```{r}
+per0   <- quantile( TTseq_timecourse$CGI3_skew, 0   )
+per20  <- quantile( TTseq_timecourse$CGI3_skew, 0.2 )
+per40  <- quantile( TTseq_timecourse$CGI3_skew, 0.4 )
+per60  <- quantile( TTseq_timecourse$CGI3_skew, 0.6 )
+per80  <- quantile( TTseq_timecourse$CGI3_skew, 0.8 )
+per100 <- quantile( TTseq_timecourse$CGI3_skew, 1.0 )
+
+per0
+per20
+per40
+per60
+per80
+per100
+```
+So now filter.
+```{r}
+CGI20per  <- TTseq_timecourse[ CGI3_skew <= per20 ]
+CGI40per  <- TTseq_timecourse[ CGI3_skew <= per40 & CGI3_skew > per20 ]
+CGI60per  <- TTseq_timecourse[ CGI3_skew <= per60 & CGI3_skew > per40 ]
+CGI80per  <- TTseq_timecourse[ CGI3_skew <= per80 & CGI3_skew > per60 ]
+CGI100per <- TTseq_timecourse[ CGI3_skew  > per80 ]
+```
+
+```{r}
+print( "20th percentile dist vs prox" )
+dim( CGI20per[ simple_skew_class == "Dist"] )
+dim( CGI20per[ simple_skew_class == "Prox"] )
+
+print( "40th percentile dist vs prox" )
+dim( CGI40per[ simple_skew_class == "Dist"] )
+dim( CGI40per[ simple_skew_class == "Prox"] )
+
+print( "60th percentile dist vs prox" )
+dim( CGI60per[ simple_skew_class == "Dist"] )
+dim( CGI60per[ simple_skew_class == "Prox"] )
+
+print( "80th percentile dist vs prox" )
+dim( CGI80per[ simple_skew_class == "Dist"] )
+dim( CGI80per[ simple_skew_class == "Prox"] )
+
+print( "100th percentile dist vs prox" )
+dim( CGI100per[ simple_skew_class == "Dist"] )
+dim( CGI100per[ simple_skew_class == "Prox"] )
+```
+
+
+```{r}
+perlist <- list( CGI20per, CGI40per, CGI60per, CGI80per, CGI100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 12:412, 414:415 ) ] #removed class used for now
+    long_tab <- melt( tmptab, na.rm = TRUE, id.vars = c( "loc", "condition", "time" ) )
+    nlist[[per]] <- long_tab[, .(mean_score = mean(value)), by = list(variable, loc, condition, time )]
+}
+
+rm( perlist )
+```
+
+```{r}
+CGI20perIDs  <- CGI20per$uniq_id
+CGI40perIDs  <- CGI40per$uniq_id
+CGI60perIDs  <- CGI60per$uniq_id
+CGI80perIDs  <- CGI80per$uniq_id
+CGI100perIDs <- CGI100per$uniq_id
+
+rm( CGI20per, CGI40per, CGI60per, CGI80per, CGI100per )
+```
+
+```{r}
+nlist[[1]]$perc <- "20perc_CGI_skew"
+nlist[[2]]$perc <- "40perc_CGI_skew"
+nlist[[3]]$perc <- "60perc_CGI_skew"
+nlist[[4]]$perc <- "80perc_CGI_skew"
+nlist[[5]]$perc <- "100perc_CGI_skew"
+
+CGI_skew_quant <- do.call( rbind, nlist )
+```
+
+```{r}
+colnames( CGI_skew_quant )[1] <- "Bins"
+CGI_skew_quant$Bins <- sub( "^X", "", CGI_skew_quant$Bins )
+CGI_skew_quant$Bins <- sub( "^\\.", "-", CGI_skew_quant$Bins )
+CGI_skew_quant$Bins <- as.numeric( CGI_skew_quant$Bins )
+CGI_skew_quant$time <- as.character( CGI_skew_quant$time )
+```
+
+
+```{r}
+geom1_CGI_skew_quant <- CGI_skew_quant |> 
+  filter( loc == "TSS" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="cgi_skewed_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom1_CGI_skew_quant
+```
+
+```{r}
+geom2_CGI_skew_quant <- CGI_skew_quant |> 
+  filter( loc == "CGI" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="cgi_skewed_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom2_CGI_skew_quant
+```
+Same deal. One last relevant skew one before moving on to distance to CGI edge and TTseq signal. (There is a pattern, but 'it has moderate skew' isn't really an actionable pattern.)
+
+```{r}
+TTseq_timecourse$dif <- TTseq_timecourse$TSS_skew - TTseq_timecourse$CGI3_skew
+per0   <- quantile( TTseq_timecourse$dif, 0   )
+per20  <- quantile( TTseq_timecourse$dif, 0.2 )
+per40  <- quantile( TTseq_timecourse$dif, 0.4 )
+per60  <- quantile( TTseq_timecourse$dif, 0.6 )
+per80  <- quantile( TTseq_timecourse$dif, 0.8 )
+per100 <- quantile( TTseq_timecourse$dif, 1.0 )
+
+per0
+per20
+per40
+per60
+per80
+per100
+```
+So now filter.
+```{r}
+dif20per  <- TTseq_timecourse[ dif <= per20 ]
+dif40per  <- TTseq_timecourse[ dif <= per40 & dif > per20 ]
+dif60per  <- TTseq_timecourse[ dif <= per60 & dif > per40 ]
+dif80per  <- TTseq_timecourse[ dif <= per80 & dif > per60 ]
+dif100per <- TTseq_timecourse[ dif  > per80 ]
+```
+
+```{r}
+print( "20th percentile dist vs prox" )
+dim( dif20per[ simple_skew_class == "Dist"] )
+dim( dif20per[ simple_skew_class == "Prox"] )
+
+print( "40th percentile dist vs prox" )
+dim( dif40per[ simple_skew_class == "Dist"] )
+dim( dif40per[ simple_skew_class == "Prox"] )
+
+print( "60th percentile dist vs prox" )
+dim( dif60per[ simple_skew_class == "Dist"] )
+dim( dif60per[ simple_skew_class == "Prox"] )
+
+print( "80th percentile dist vs prox" )
+dim( dif80per[ simple_skew_class == "Dist"] )
+dim( dif80per[ simple_skew_class == "Prox"] )
+
+print( "100th percentile dist vs prox" )
+dim( dif100per[ simple_skew_class == "Dist"] )
+dim( dif100per[ simple_skew_class == "Prox"] )
+```
+
+
+```{r}
+perlist <- list( dif20per, dif40per, dif60per, dif80per, dif100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 12:412, 414:415 ) ] #removed class used for now
+    long_tab <- melt( tmptab, na.rm = TRUE, id.vars = c( "loc", "condition", "time" ) )
+    nlist[[per]] <- long_tab[, .(mean_score = mean(value)), by = list(variable, loc, condition, time )]
+}
+
+rm( perlist )
+```
+
+```{r}
+dif20perIDs  <- dif20per$uniq_id
+dif40perIDs  <- dif40per$uniq_id
+dif60perIDs  <- dif60per$uniq_id
+dif80perIDs  <- dif80per$uniq_id
+dif100perIDs <- dif100per$uniq_id
+
+rm( dif20per, dif40per, dif60per, dif80per, dif100per )
+```
+
+```{r}
+nlist[[1]]$perc <- "20perc_dif_skew"
+nlist[[2]]$perc <- "40perc_dif_skew"
+nlist[[3]]$perc <- "60perc_dif_skew"
+nlist[[4]]$perc <- "80perc_dif_skew"
+nlist[[5]]$perc <- "100perc_dif_skew"
+
+dif_skew_quant <- do.call( rbind, nlist )
+```
+
+```{r}
+colnames( dif_skew_quant )[1] <- "Bins"
+dif_skew_quant$Bins <- sub( "^X", "", dif_skew_quant$Bins )
+dif_skew_quant$Bins <- sub( "^\\.", "-", dif_skew_quant$Bins )
+dif_skew_quant$Bins <- as.numeric( dif_skew_quant$Bins )
+dif_skew_quant$time <- as.character( dif_skew_quant$time )
+```
+
+
+```{r}
+geom1_dif_skew_quant <- dif_skew_quant |> 
+  filter( loc == "TSS" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="dif_skewed_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom1_dif_skew_quant
+```
+
+
+```{r}
+geom2_dif_skew_quant <- dif_skew_quant |> 
+  filter( loc == "CGI" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="dif_skewed_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom2_dif_skew_quant
+```
+
+
+Hmm. So it's not the strongest difference that shows the waveform, it's the second strongest. Which is still all prox.
+
+```{r}
+per0   <- quantile( TTseq_timecourse$TSS_3prime, 0   )
+per20  <- quantile( TTseq_timecourse$TSS_3prime, 0.2 )
+per40  <- quantile( TTseq_timecourse$TSS_3prime, 0.4 )
+per60  <- quantile( TTseq_timecourse$TSS_3prime, 0.6 )
+per80  <- quantile( TTseq_timecourse$TSS_3prime, 0.8 )
+per100 <- quantile( TTseq_timecourse$TSS_3prime, 1.0 )
+
+per0
+per20
+per40
+per60
+per80
+per100
+```
+
+```{r}
+len20per  <- TTseq_timecourse[ TSS_3prime <= per20 ]
+len40per  <- TTseq_timecourse[ TSS_3prime <= per40 & TSS_3prime > per20 ]
+len60per  <- TTseq_timecourse[ TSS_3prime <= per60 & TSS_3prime > per40 ]
+len80per  <- TTseq_timecourse[ TSS_3prime <= per80 & TSS_3prime > per60 ]
+len100per <- TTseq_timecourse[ TSS_3prime  > per80 ]
+```
+
+```{r}
+print( "20th percentile dist vs prox" )
+dim( len20per[ simple_skew_class == "Dist"] )
+dim( len20per[ simple_skew_class == "Prox"] )
+
+print( "40th percentile dist vs prox" )
+dim( len40per[ simple_skew_class == "Dist"] )
+dim( len40per[ simple_skew_class == "Prox"] )
+
+print( "60th percentile dist vs prox" )
+dim( len60per[ simple_skew_class == "Dist"] )
+dim( len60per[ simple_skew_class == "Prox"] )
+
+print( "80th percentile dist vs prox" )
+dim( len80per[ simple_skew_class == "Dist"] )
+dim( len80per[ simple_skew_class == "Prox"] )
+
+print( "100th percentile dist vs prox" )
+dim( len100per[ simple_skew_class == "Dist"] )
+dim( len100per[ simple_skew_class == "Prox"] )
+```
+
+```{r}
+perlist <- list( len20per, len40per, len60per, len80per, len100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 12:412, 414:415 ) ] #removed class used for now
+    long_tab <- melt( tmptab, na.rm = TRUE, id.vars = c( "loc", "condition", "time" ) )
+    nlist[[per]] <- long_tab[, .(mean_score = mean(value)), by = list(variable, loc, condition, time )]
+}
+
+rm( perlist )
+```
+
+```{r}
+len20perIDs  <- len20per$uniq_id
+len40perIDs  <- len40per$uniq_id
+len60perIDs  <- len60per$uniq_id
+len80perIDs  <- len80per$uniq_id
+len100perIDs <- len100per$uniq_id
+
+rm( len20per, len40per, len60per, len80per, len100per )
+```
+
+```{r}
+nlist[[1]]$perc <- "20perc_len"
+nlist[[2]]$perc <- "40perc_len"
+nlist[[3]]$perc <- "60perc_len"
+nlist[[4]]$perc <- "80perc_len"
+nlist[[5]]$perc <- "100perc_len"
+
+len_quant <- do.call( rbind, nlist )
+```
+
+```{r}
+colnames( len_quant )[1] <- "Bins"
+len_quant$Bins <- sub( "^X", "", len_quant$Bins )
+len_quant$Bins <- sub( "^\\.", "-", len_quant$Bins )
+len_quant$Bins <- as.numeric( len_quant$Bins )
+len_quant$time <- as.character( len_quant$time )
+```
+
+
+```{r}
+geom1_len_quant <- len_quant |> 
+  filter( loc == "TSS" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom1_len_quant
+```
+
+```{r}
+geom2_len_quant <- len_quant |> 
+  filter( loc == "CGI" ) |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc, linetype = condition)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom2_len_quant
+```
+Well, isn't that interesting? There's a lot to unpack there.
+
+Maybe split out by condition so they're easier to see. Then I'm interested in if the skew class is relevant on top of this. (which means I'll need to re-summarize the values.)
+
+```{r}
+geom1_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom1_len_quant
+```
+The longest CGI quantile is the one with both the highest peaks (why?) and the downstream pattern. all the other quantiles are shorter than 1kb.
+
+```{r}
+geom2_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "thoc5") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom2_len_quant
+```
+
+There is a clear change in behavior at the CpG island edge when you knock Thoc5 out. They're staggered from shortest to longest, and the longest still has a bit of the downstream peaks but it's faded quite a bit.
+
+```{r}
+geom3_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "ctrl") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom3_len_quant
+```
+
+This part I don't understand. Why would only the longest CGI have this pattern at the edge? If anything I'd expect bleedthrough of TSS-associated signal in the short ones. Although to be fair, I do need to keep in mind that a lot of the shortest stuff is eliminated in TTseq, and... Well, actually. If tx normally moves at over a KB a minute, maybe the long CGI are the only ones where I'm going to be able to see any effect anyway? Not sure.
+
+```{r}
+geom4_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "thoc5") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom4_len_quant
+```
+At a bit of a loss for words with this one, TBH. Not sure what to think of it.
+
+With prox/dist:
+```{r}
+len20per  <- TTseq_timecourse[ TSS_3prime <= per20 ]
+len40per  <- TTseq_timecourse[ TSS_3prime <= per40 & TSS_3prime > per20 ]
+len60per  <- TTseq_timecourse[ TSS_3prime <= per60 & TSS_3prime > per40 ]
+len80per  <- TTseq_timecourse[ TSS_3prime <= per80 & TSS_3prime > per60 ]
+len100per <- TTseq_timecourse[ TSS_3prime  > per80 ]
+```
+
+```{r}
+perlist <- list( len20per, len40per, len60per, len80per, len100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 12:415 ) ] 
+    long_tab <- melt( tmptab, na.rm = TRUE, id.vars = c( "loc", "condition", "time", "class_used" ) )
+    nlist[[per]] <- long_tab[, .(mean_score = mean(value)), by = list(variable, loc, condition, time, class_used )]
+}
+
+rm( perlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "20perc_len"
+nlist[[2]]$perc <- "40perc_len"
+nlist[[3]]$perc <- "60perc_len"
+nlist[[4]]$perc <- "80perc_len"
+nlist[[5]]$perc <- "100perc_len"
+
+len_quant <- do.call( rbind, nlist )
+```
+
+```{r}
+colnames( len_quant )[1] <- "Bins"
+len_quant$Bins <- sub( "^X", "", len_quant$Bins )
+len_quant$Bins <- sub( "^\\.", "-", len_quant$Bins )
+len_quant$Bins <- as.numeric( len_quant$Bins )
+len_quant$time <- as.character( len_quant$time )
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "ctrl" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+
+```{r}
+geom6_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "ctrl" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom6_len_quant
+```
+
+```{r}
+geom7_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "thoc5" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom7_len_quant
+```
+
+```{r}
+geom8_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "thoc5" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom8_len_quant
+```
+
+```{r}
+geom9_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "ctrl" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom9_len_quant
+```
+
+```{r}
+geom10_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "ctrl" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom10_len_quant
+```
+
+```{r}
+geom11_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "thoc5" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom11_len_quant
+```
+
+```{r}
+geom12_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "thoc5" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom12_len_quant
+```
+
+

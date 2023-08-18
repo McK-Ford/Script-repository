@@ -1,0 +1,256 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+source("~/Script repository/R scripting/Utility_Fns.R")
+source( "~/Script repository/R scripting/Matrix_Fns.R" )
+source( "~/Script repository/R scripting/Graphing_Functions.R" )
+```
+
+```{r}
+score_tab <- fread( "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/proseq_not_scaled_ttseq_skewclassed.txt.gz", header=TRUE, drop=c( 2,3,4,5,6,7,8,9,10,15,20,22,23,24,26 ) )
+```
+
+
+```{r}
+len500  <- score_tab[ TSS_3prime <= 500 ]
+len1000  <- score_tab[ TSS_3prime <= 1000 & TSS_3prime > 500 ]
+len2000  <- score_tab[ TSS_3prime <= 2000 & TSS_3prime > 1000 ]
+len3000  <- score_tab[ TSS_3prime <= 3000 & TSS_3prime > 2000 ]
+lenbig <- score_tab[ TSS_3prime  > 3000 ]
+
+dim(len500)
+dim(len1000)
+dim(len2000)
+dim(len3000)
+dim(lenbig)
+```
+
+```{r}
+lenlist <- list( len500, len1000, len2000, len3000, lenbig )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( lenlist ) ) {
+    tmptab <- lenlist[[per]][, c( 12:416 ) ] 
+    long_tab <- melt( tmptab, na.rm = TRUE, id.vars = c( "loc", "seq_type", "dir", "class_used", "rep" ) )
+    nlist[[per]] <- long_tab[, .(mean_score = mean(value)), by = list(variable, loc, seq_type, dir, class_used, rep )]
+}
+
+rm( lenlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "len500"
+nlist[[2]]$perc <- "len1000"
+nlist[[3]]$perc <- "len2000"
+nlist[[4]]$perc <- "len3000"
+nlist[[5]]$perc <- "lenlong"
+
+len_quant <- do.call( rbind, nlist )
+```
+
+```{r}
+colnames( len_quant )[1] <- "Bins"
+len_quant$Bins <- sub( "^X", "", len_quant$Bins )
+len_quant$Bins <- sub( "^\\.", "-", len_quant$Bins )
+len_quant$Bins <- as.numeric( len_quant$Bins )
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "PROseq" & class_used == "prox" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "PROseq" & class_used == "dist" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "PROseq" & class_used == "prox" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "PROseq" & class_used == "dist" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "PROseq" & class_used == "prox" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "PROseq" & class_used == "dist" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "PROseq" & class_used == "prox" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "PROseq" & class_used == "dist" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "TTseq" & class_used == "prox" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "TTseq" & class_used == "dist" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "TTseq" & class_used == "prox" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "TTseq" & class_used == "dist" & rep == "r1") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "TTseq" & class_used == "prox" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & seq_type == "TTseq" & class_used == "dist" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "TTseq" & class_used == "prox" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "CGI" & seq_type == "TTseq" & class_used == "dist" & rep == "r2") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+      facet_wrap(~dir) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")
+geom5_len_quant
+```
+

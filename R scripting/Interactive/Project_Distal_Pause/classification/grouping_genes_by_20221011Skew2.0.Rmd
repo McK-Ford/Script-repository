@@ -1,0 +1,255 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r sourcecode, message=FALSE, warning=FALSE}
+source("~/Script repository/R scripting/My_Useful_Fns.R") #12/09/2022 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/My_Useful_Fns.R
+```
+
+```{r data}
+geneDir <- "/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/Refseq/Longest_TSS_w_CGI/20220329 version/"
+refseq_curated_longest_cgi_minus <- read.delim(paste0(
+  geneDir,
+  "refseq_curated_longest_cgi_minus.hg38.txt"))
+refseq_curated_longest_cgi_plus <- read.delim(paste0(
+  geneDir,
+  "refseq_curated_longest_cgi_plus.hg38.txt"))
+```
+
+```{r onlylongenoughCGI}
+rc_p <-  refseq_curated_longest_cgi_plus |> filter(TSS_3prime>=150)
+rc_m <-  refseq_curated_longest_cgi_minus |> filter(TSS_3prime>=150)
+```
+
+```{r plus}
+rc_bedp <- rc_p |>
+  select(c(chrom, gene_s, cpg_e, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom()#gene_l will act as score proxy
+tss_bedp <- rc_bedp
+cgi_bedp <- rc_bedp
+tss_bedp[3] <- tss_bedp[2] + 100 #end anchor is TSS + 100
+cgi_bedp[2] <- cgi_bedp[3] - 50 #start anchor is CGI_e - 50
+cgi_bedp[3] <- cgi_bedp[3] + 50 #end anchor is CGI_e + 50
+```
+Let's add in skew at a couple other key points too out of curiosity. Don't worry for now about len.
+```{r plus2}
+tes_bedp <- rc_p |>
+  select(c(chrom, gene_s, gene_e, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom()
+cgi_s_bedp <- rc_p |>
+  select(c(chrom, cpg_s, gene_e, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom()
+ex2in_bedp <- rc_p |>
+  select(c(chrom, ex2in, gene_e, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom() 
+ex2in_bedp$ex2in[ is.na(ex2in_bedp$ex2in) ] <- ex2in_bedp$gene_e[ is.na(ex2in_bedp$ex2in) ]
+# gene end will sub for ex2in in genes that only have one exon
+tes_bedp[2] <- tes_bedp[3] - 100  #We'll do -100 through TES for this one.
+cgi_s_bedp[2] <- cgi_s_bedp[2] - 50 #we'll do 50 50 around.
+cgi_s_bedp[3] <- cgi_s_bedp[2] + 100
+ex2in_bedp[2] <- ex2in_bedp[2] - 50 #again we'll do 50 50
+ex2in_bedp[3] <- ex2in_bedp[2] + 100
+```
+
+```{r minus}
+rc_bedm <- rc_m |>
+  select(c(chrom, cpg_s, gene_e, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom()#gene_l will act as score proxy
+tss_bedm <- rc_bedm
+cgi_bedm <- rc_bedm
+tss_bedm[2] <- tss_bedm[3] - 100 #end anchor is TSS + 100
+cgi_bedm[2] <- cgi_bedm[2] - 50 #start anchor is CGI_e - 50
+cgi_bedm[3] <- cgi_bedm[2] + 100 #end anchor is CGI_e + 50
+
+tes_bedm <- rc_m |>
+  select(c(chrom, gene_s, gene_e, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom()
+cgi_s_bedm <- rc_m |>
+  select(c(chrom, gene_s, cpg_e, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom()
+ex2in_bedm <- rc_m |>
+  select(c(chrom, gene_s, ex2in, uniq_id, gene_l, strand)) |> 
+  order_bed_by_chrom() #This one may break because there's NAs. See what happens and adjust code as necessary.
+ex2in_bedm$ex2in[ is.na(ex2in_bedm$ex2in) ] <- ex2in_bedm$gene_s[ is.na(ex2in_bedm$ex2in) ]
+# gene end will sub for ex2in in genes that only have one exon
+tes_bedm[3] <- tes_bedm[2] + 100  #We'll do -100 through TES for this one.
+cgi_s_bedm[2] <- cgi_s_bedm[3] - 50 #we'll do 50 50 around.
+cgi_s_bedm[3] <- cgi_s_bedm[3] + 50
+ex2in_bedm[2] <- ex2in_bedm[3] - 50 #again we'll do 50 50
+ex2in_bedm[3] <- ex2in_bedm[3] + 50
+```
+
+```{r calc}
+skewDIR = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Calc_seq_tracks/20230329_extended_skew/"
+plus_list = list( tss_bedp, cgi_bedp, tes_bedp, cgi_s_bedp, ex2in_bedp )
+minus_list = list( tss_bedm, cgi_bedm, tes_bedm, cgi_s_bedm, ex2in_bedm )
+plus_calced = lapply(
+  plus_list,
+  score_matrix_bigwig,
+  bw = paste0( skewDIR, "p_smooth_skew.bw" ),
+  n = 1,
+  verbose = FALSE
+  )
+minus_calced = lapply(
+  minus_list,
+  score_matrix_bigwig,
+  bw = paste0( skewDIR, "m_smooth_skew.bw" ),
+  n = 1,
+  verbose = FALSE
+  )
+```
+
+Possibly run at some point with the netCAGE TSSes as well.
+No lost values, can just hardcoded building it..
+```{r}
+plus_flat <- plus_calced[[1]][ , c(1,6) ]
+colnames( plus_flat ) <- c( "uniq_id", "TSS_skew" )
+
+plus_flat$CGI3_skew <- plus_calced[[2]]$V1
+plus_flat$tes_skew <- plus_calced[[3]]$V1
+plus_flat$CGI5_skew <- plus_calced[[4]]$V1
+plus_flat$x2in_skew <- plus_calced[[5]]$V1
+
+scored_plus <- merge( rc_p, plus_flat, by = "uniq_id" )
+```
+
+
+```{r}
+minus_flat <- minus_calced[[1]][ , c(1,6) ]
+colnames( minus_flat ) <- c( "uniq_id", "TSS_skew" )
+
+minus_flat$CGI3_skew <- minus_calced[[2]]$V1
+minus_flat$tes_skew <- minus_calced[[3]]$V1
+minus_flat$CGI5_skew <- minus_calced[[4]]$V1
+minus_flat$x2in_skew <- minus_calced[[5]]$V1
+
+scored_minus <- merge( rc_m, minus_flat, by = "uniq_id" )
+```
+
+Okay let's classify them, both complicated and simple.
+
+```{r}
+scored_plus$simple_skew_class <- ifelse(
+  scored_plus$TSS_skew > scored_plus$CGI3_skew,
+  "Prox",
+  "Dist" 
+  )
+scored_minus$simple_skew_class <- ifelse(
+  scored_minus$TSS_skew > scored_minus$CGI3_skew,
+  "Prox",
+  "Dist" 
+  )
+```
+plus is 3228 dist and 3606 prox.
+minus is 3241 dist and 3467 prox.
+
+For complex class... think about my old bi/super-prox/super-dist classes...
+
+```{r}
+summary( scored_plus$TSS_skew )
+summary( scored_plus$CGI3_skew )
+
+summary( scored_minus$TSS_skew )
+summary( scored_minus$CGI3_skew )
+```
+So about 50% of genes have between -0.1 and 0.2 skew at both sites. Makes sense, everything we've seen does suggest a slight positive skew through the gene body. So we'll call that our neutral skew.
+So we'll say for this set of classes, we have:
+strong_prox (where prox is above 0.2 and dist is not)
+strong_dist (where dist is above 0.2 and prox is not)
+strong_skew (where both dist and prox are above 0.2)
+no_or_neg_skew (where both dist and prox are below -0.1 - this may indicate a much more important gene on other strand.)
+no_skew (where both dist and prox are below 0.2, but at least one is above -0.1)
+
+```{r}
+scored_plus |> filter(TSS_skew > 0.2 & CGI3_skew > 0.2) |> dim() #strong skew
+scored_plus |> filter(TSS_skew < 0.2 & CGI3_skew > 0.2) |> dim() #dist skew
+scored_plus |> filter(TSS_skew > 0.2 & CGI3_skew < 0.2) |> dim() #prox skew
+scored_plus |> filter(TSS_skew < 0.2 & CGI3_skew < 0.2) |> dim() #no or neg skew.
+
+scored_minus |> filter(TSS_skew > 0.2 & CGI3_skew > 0.2) |> dim()
+scored_minus |> filter(TSS_skew < 0.2 & CGI3_skew > 0.2) |> dim()
+scored_minus |> filter(TSS_skew > 0.2 & CGI3_skew < 0.2) |> dim()
+scored_minus |> filter(TSS_skew < 0.2 & CGI3_skew < 0.2) |> dim()
+```
+Interesting. Now, this is all over 100 bp remember. Not going to code this into the table yet though.
+
+
+```{r}
+write.table(
+  scored_plus, "plus_skew_genes.bed", quote=FALSE,
+  row.names = FALSE, col.names = TRUE, sep = "\t"
+)
+
+write.table(
+  scored_minus, "minus_skew_genes.bed", quote=FALSE,
+  row.names = FALSE, col.names = TRUE, sep = "\t"
+)
+```
+
+```{r}
+pp <-  scored_plus |> filter ( simple_skew_class == "Prox" )
+dp <- scored_plus |> filter ( simple_skew_class == "Dist" )
+```
+
+```{r}
+pm <- scored_minus |> filter ( simple_skew_class == "Prox" )
+dm <- scored_minus |> filter ( simple_skew_class == "Dist" )
+```
+
+For metaplotting (TSS to 3' CGI)
+```{r}
+pp_tss <- pp |> arrange( desc(TSS_skew) ) |> select( c( 2, 6, 4, 1, 16, 8 ) )
+dp_tss <- dp |> arrange( desc(TSS_skew) ) |> select( c( 2, 6, 4, 1, 16, 8 ) )
+pm_tss <- pm |> arrange( desc(TSS_skew) ) |> select( c( 2, 3, 7, 1, 16, 8 ) )
+dm_tss <- dm |> arrange( desc(TSS_skew) ) |> select( c( 2, 3, 7, 1, 16, 8 ) )
+
+scored_prox <- rbind( pp, pm )
+scored_dist <- rbind( dp, dm )
+prox_cgi_order <- scored_prox |> arrange( desc( CGI3_skew ) )
+dist_cgi_order <- scored_dist |> arrange( desc( CGI3_skew ) )
+prox_tss_order <- scored_prox |> arrange( desc( TSS_skew ) )
+dist_tss_order <- scored_dist |> arrange( desc( TSS_skew ) )
+```
+
+```{r}
+write.table(
+  pp_tss, file( "proximal_plus_skew_genes_tss_sorted.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+write.table(
+  dp_tss, file( "distal_plus_skew_genes_tss_sorted.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+write.table(
+  pm_tss, file( "proximal_minus_skew_genes_tss_sorted.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+write.table(
+  dm_tss, file( "distal_minus_skew_genes_tss_sorted.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+
+
+
+
+write.table(
+  prox_cgi_order, file( "prox_cgi_order.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+write.table(
+  dist_cgi_order, file( "dist_cgi_order.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+write.table(
+  prox_tss_order, file( "prox_tss_order.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+write.table(
+  dist_tss_order, file( "dist_tss_order.bed", "wb" ), quote = FALSE,
+  row.names = FALSE, col.names = FALSE, sep = "\t"
+)
+```
+

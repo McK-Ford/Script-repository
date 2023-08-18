@@ -1,0 +1,174 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r}
+library(tidyverse)
+library(data.table)
+source("~/Script repository/R scripting/Utility_Fns.R")
+source( "~/Script repository/R scripting/Graphing_Functions.R" )
+```
+```{r}
+TTseq_timecourse <- fread( "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/Polenkowski_Timecourse_TTseq/TTseq_timecourse_skewclassed.txt.gz", header=TRUE, drop=c( 2,3,4,5,6,7,8,9,10,15,20,22,23,24,26 ) )
+```
+
+With prox/dist:
+```{r}
+per0   <- quantile( TTseq_timecourse$TSS_3prime, 0   )
+per20  <- quantile( TTseq_timecourse$TSS_3prime, 0.2 )
+per40  <- quantile( TTseq_timecourse$TSS_3prime, 0.4 )
+per60  <- quantile( TTseq_timecourse$TSS_3prime, 0.6 )
+per80  <- quantile( TTseq_timecourse$TSS_3prime, 0.8 )
+per100 <- quantile( TTseq_timecourse$TSS_3prime, 1.0 )
+```
+
+
+```{r}
+len20per  <- TTseq_timecourse[ TSS_3prime <= per20 ]
+len40per  <- TTseq_timecourse[ TSS_3prime <= per40 & TSS_3prime > per20 ]
+len60per  <- TTseq_timecourse[ TSS_3prime <= per60 & TSS_3prime > per40 ]
+len80per  <- TTseq_timecourse[ TSS_3prime <= per80 & TSS_3prime > per60 ]
+len100per <- TTseq_timecourse[ TSS_3prime  > per80 ]
+```
+
+```{r}
+perlist <- list( len20per, len40per, len60per, len80per, len100per )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( perlist ) ) {
+    tmptab <- perlist[[per]][, c( 12:415 ) ] 
+    long_tab <- melt( tmptab, na.rm = TRUE, id.vars = c( "loc", "condition", "time", "class_used" ) )
+    nlist[[per]] <- long_tab[, .(mean_score = mean(value)), by = list(variable, loc, condition, time, class_used )]
+}
+
+rm( perlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "20perc_len"
+nlist[[2]]$perc <- "40perc_len"
+nlist[[3]]$perc <- "60perc_len"
+nlist[[4]]$perc <- "80perc_len"
+nlist[[5]]$perc <- "100perc_len"
+
+len_quant <- do.call( rbind, nlist )
+```
+
+```{r}
+colnames( len_quant )[1] <- "Bins"
+len_quant$Bins <- sub( "^X", "", len_quant$Bins )
+len_quant$Bins <- sub( "^\\.", "-", len_quant$Bins )
+len_quant$Bins <- as.numeric( len_quant$Bins )
+len_quant$time <- as.character( len_quant$time )
+```
+
+```{r}
+geom5_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "ctrl" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+  ylim(0,50)
+geom5_len_quant
+```
+
+
+```{r}
+geom6_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "ctrl" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+  ylim(0,50)
+geom6_len_quant
+```
+
+```{r}
+geom7_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "thoc5" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+  ylim(0,50)
+geom7_len_quant
+```
+
+```{r}
+geom8_len_quant <- len_quant |> 
+  filter( loc == "TSS" & condition == "thoc5" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+  ylim(0,50)
+geom8_len_quant
+```
+
+```{r}
+geom9_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "ctrl" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+  ylim(0,50)
+geom9_len_quant
+```
+
+```{r}
+geom10_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "ctrl" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+  ylim(0,50)
+geom10_len_quant
+```
+
+```{r}
+geom11_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "thoc5" & class_used == "prox") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+  ylim(0,50)
+geom11_len_quant
+```
+
+```{r}
+geom12_len_quant <- len_quant |> 
+  filter( loc == "CGI" & condition == "thoc5" & class_used == "dist") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc)) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="len_ttseq") +
+  facet_wrap(~time) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black") +
+  ylim(0,50)
+geom12_len_quant
+```
+
+

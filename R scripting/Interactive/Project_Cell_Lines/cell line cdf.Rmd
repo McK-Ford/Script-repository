@@ -1,0 +1,86 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2, hjust=0.5),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+```
+
+So lets grab the table...
+```{r}
+peppro_w_log2fc <- read.delim("~/Script repository/R scripting/Interactive/Project Cell Lines/Peppro_analysis/peppro_w_log2fc.txt")
+```
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+pI_no_na <- peppro_w_log2fc |>  
+            filter(!is.na(pI_MCF7) &
+                     !is.na(pI_SUM159) &
+                     !is.na(pI_MCF10A) &
+                     !is.na(pI_T47D) &
+                     !is.na(pI_MB231))  
+```
+
+```{r}
+colors <- c("MCF7" = "blue", "T47D" = "green", "MB231" = "orange", "SUM159" = "red", "MCF10A" = "purple")
+gplot <- ggplot(data = pI_no_na) +
+  stat_ecdf(geom="step", aes(pI_MCF7, color = "MCF7")) +
+  stat_ecdf(geom="step", aes(pI_T47D, color = "T47D")) +
+  stat_ecdf(geom="step", aes(pI_SUM159, color = "MB231")) +
+  stat_ecdf(geom="step", aes(pI_MB231, color = "SUM159")) +
+  stat_ecdf(geom="step", aes(pI_MCF10A, color = "MCF10A")) +
+  mytheme +
+  scale_color_manual(values = colors) +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  xlab("pI") +
+  ggtitle("Cell Line ECDF") +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())
+gplot
+```
+
+Actually, does it have to be no-NA??? Now that I think about it some more, we're looking for distribution differences, not gene diffs.
+
+```{r}
+gplot <- ggplot(data = peppro_w_log2fc) +
+  stat_ecdf(geom="step", aes(pI_MCF7, color = "MCF7")) +
+  stat_ecdf(geom="step", aes(pI_T47D, color = "T47D")) +
+  stat_ecdf(geom="step", aes(pI_SUM159, color = "MB231")) +
+  stat_ecdf(geom="step", aes(pI_MB231, color = "SUM159")) +
+  stat_ecdf(geom="step", aes(pI_MCF10A, color = "MCF10A")) +
+  mytheme +
+  scale_color_manual(values = colors) +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  xlab("pI") +
+  ggtitle("Cell Line ECDF") +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank())
+gplot
+```
+

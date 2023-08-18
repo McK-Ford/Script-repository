@@ -1,0 +1,357 @@
+---
+title: "Timecourse TTseq2"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r source, message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+```
+
+```{r}
+mygenes <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+Bed filtering 1
+```{r}
+gene_info_p <- mygenes |> filter( strand == "+" & chrom != "chrX" )
+gene_info_m <- mygenes |> filter( strand == "-" & chrom != "chrX" )
+```
+
+```{r}
+TSS_CGI_E_prox_p <- gene_info_p |>
+  filter( simple_skew_class=="Prox" ) |> 
+  select( c( "chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand" ) )
+TSS_CGI_E_prox_m <- gene_info_m |>
+  filter( simple_skew_class=="Prox" ) |> 
+  select( c( "chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand" ) )
+
+TSS_CGI_E_dist_p <- gene_info_p |>
+  filter( simple_skew_class=="Dist" ) |> 
+  select( c( "chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand" ) )
+TSS_CGI_E_dist_m <- gene_info_m |>
+  filter( simple_skew_class=="Dist" ) |> 
+  select( c( "chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand" ) )
+```
+
+```{r}
+TSS_ls <- list(
+  TSS_CGI_E_prox_p,
+  TSS_CGI_E_prox_m,
+  TSS_CGI_E_dist_p,
+  TSS_CGI_E_dist_m
+)
+for (i in seq_along( TSS_ls ) ) {
+  colnames( TSS_ls[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+```
+
+```{r}
+CGI_ls <- TSS_ls
+CGI_ls[[1]]$start <- CGI_ls[[1]]$end - 1
+CGI_ls[[2]]$end <- CGI_ls[[2]]$start + 1
+CGI_ls[[3]]$start <- CGI_ls[[3]]$end - 1
+CGI_ls[[4]]$end <- CGI_ls[[4]]$start + 1
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE156400_Fang_2021_HEK293T_PROseq_Rloops/"
+BWs <- list(
+  paste0(
+    DIR,
+    "Pro-seq/20211207 realigned/bw/Liang_hek_proseq_2021_1_fwd_nodedup.bw"
+    ),
+  paste0(
+    DIR,
+    "Pro-seq/20211207 realigned/bw/Liang_hek_proseq_2021_1_rev_nodedup.bw"
+    ),
+  paste0(
+    DIR,
+    "Pro-seq/20211207 realigned/bw/Liang_hek_proseq_2021_2_fwd_nodedup.bw"
+    ),
+  paste0(
+    DIR,
+    "Pro-seq/20211207 realigned/bw/Liang_hek_proseq_2021_2_rev_nodedup.bw"
+    ),
+  paste0(
+    DIR,
+    "TT-seq/GSM4730176_HEK293T-TTseq-rep1.fwd.bw"
+    ),
+  paste0(
+    DIR,
+    "TT-seq/GSM4730176_HEK293T-TTseq-rep1.rev.bw"
+    ),
+  paste0(
+    DIR,
+    "TT-seq/GSM4730177_HEK293T-TTseq-rep2.fwd.bw"
+    ),
+  paste0(
+    DIR,
+    "TT-seq/GSM4730177_HEK293T-TTseq-rep2.rev.bw"
+    )
+)
+```
+
+```{r}
+TSS_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 4 )
+for ( bed in seq_along( TSS_ls ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    TSS_LoL[[bed]][[bw]] <- score_matrix(
+      bed = TSS_ls[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+```{r}
+CGI_LoL <- rep( list( vector( mode = "list", length = 8 ) ), 4 )
+for ( bed in seq_along( CGI_ls ) ) {
+  for ( bw in seq_along( BWs ) ) {
+    CGI_LoL[[bed]][[bw]] <- score_matrix(
+      bed = CGI_ls[[bed]],
+      readsource = BWs[[bw]],
+      b = 1000,
+      a = 3000,
+      bs = 10,
+      ignorestrand = TRUE,
+      method = "single_anch",
+      bam_or_bw = "bw"
+      )
+  }
+}
+```
+
+```{r}
+TSS_list <- unlist(TSS_LoL, recursive = F)
+CGI_list <- unlist(CGI_LoL, recursive = F)
+
+for (i in seq_along(TSS_list)){ TSS_list[[i]]$loc <- "TSS" }
+for (i in seq_along(CGI_list)){ CGI_list[[i]]$loc <- "CGI" }
+#Definitely not the ideal way to do this, but I don't want to waste time figuring out the ideal computational way.
+TSSCGI <- list(
+  rbind(TSS_list[[1]], CGI_list[[1]]), #ProxP, proseq1FWD
+  rbind(TSS_list[[2]], CGI_list[[2]]), #ProxP, proseq1REV
+  rbind(TSS_list[[3]], CGI_list[[3]]), #ProxP, proseq2FWD
+  rbind(TSS_list[[4]], CGI_list[[4]]), #ProxP, proseq2REV
+  rbind(TSS_list[[5]], CGI_list[[5]]), #ProxP, ttseq1FWD
+  rbind(TSS_list[[6]], CGI_list[[6]]), #ProxP, ttseq1REV
+  rbind(TSS_list[[7]], CGI_list[[7]]), #ProxP, ttseq2FWD
+  rbind(TSS_list[[8]], CGI_list[[8]]), #ProxP, ttseq2REV
+  rbind(TSS_list[[9]], CGI_list[[9]]), #ProxM, proseq1FWD
+  rbind(TSS_list[[10]], CGI_list[[10]]), #ProxM, proseq1REV
+  rbind(TSS_list[[11]], CGI_list[[11]]), #ProxM, proseq2FWD
+  rbind(TSS_list[[12]], CGI_list[[12]]), #ProxM, proseq2REV
+  rbind(TSS_list[[13]], CGI_list[[13]]), #ProxM, ttseq1FWD
+  rbind(TSS_list[[14]], CGI_list[[14]]), #ProxM, ttseq1REV
+  rbind(TSS_list[[15]], CGI_list[[15]]), #ProxM, ttseq2FWD
+  rbind(TSS_list[[16]], CGI_list[[16]]), #ProxM, ttseq2REV
+  rbind(TSS_list[[17]], CGI_list[[17]]), #DistP, proseq1FWD
+  rbind(TSS_list[[18]], CGI_list[[18]]), #DistP, proseq1REV
+  rbind(TSS_list[[19]], CGI_list[[19]]), #DistP, proseq2FWD
+  rbind(TSS_list[[20]], CGI_list[[20]]), #DistP, proseq2REV
+  rbind(TSS_list[[21]], CGI_list[[21]]), #DistP, ttseq1FWD
+  rbind(TSS_list[[22]], CGI_list[[22]]), #DistP, ttseq1REV
+  rbind(TSS_list[[23]], CGI_list[[23]]), #DistP, ttseq2FWD
+  rbind(TSS_list[[24]], CGI_list[[24]]), #DistP, ttseq2REV
+  rbind(TSS_list[[25]], CGI_list[[25]]), #DistM, proseq1FWD
+  rbind(TSS_list[[26]], CGI_list[[26]]), #DistM, proseq1REV
+  rbind(TSS_list[[27]], CGI_list[[27]]), #DistM, proseq2FWD
+  rbind(TSS_list[[28]], CGI_list[[28]]), #DistM, proseq2REV
+  rbind(TSS_list[[29]], CGI_list[[29]]), #DistM, ttseq1FWD
+  rbind(TSS_list[[30]], CGI_list[[30]]), #DistM, ttseq1REV
+  rbind(TSS_list[[31]], CGI_list[[31]]), #DistM, ttseq2FWD
+  rbind(TSS_list[[32]], CGI_list[[32]]) #DistM, ttseq2REV
+)
+
+rm(TSS_list)
+rm(CGI_list)
+```
+Next, strand, bc that's kinda complex. So. It was bed, then BW. So first 8 are prox_p, then prox_m, then dist_p, then dist_m. For each 8, for plus sense are odds, for minus sense are evens. So first let's merge plus minus then sense antisense.
+```{r}
+plus_sense_list <- list(
+  TSSCGI[[1]], #ProxP, proseq1FWD
+  TSSCGI[[3]], #ProxP, proseq2FWD
+  TSSCGI[[5]], #ProxP, ttseq1FWD
+  TSSCGI[[7]], #ProxP, ttseq2FWD
+  TSSCGI[[17]], #DistP, proseq1FWD
+  TSSCGI[[19]], #DistP, proseq2FWD
+  TSSCGI[[21]], #DistP, ttseq1FWD
+  TSSCGI[[23]] #DistP, ttseq2FWD
+)
+minus_sense_list <- list(
+  TSSCGI[[10]], #ProxM, proseq1REV
+  TSSCGI[[12]], #ProxM, proseq2REV
+  TSSCGI[[14]], #ProxM, ttseq1REV
+  TSSCGI[[16]], #ProxM, ttseq2REV
+  TSSCGI[[26]], #DistM, proseq1REV
+  TSSCGI[[28]], #DistM, proseq2REV
+  TSSCGI[[30]], #DistM, ttseq1REV
+  TSSCGI[[32]] #DistM, ttseq2REV
+)
+plus_antisense_list <- list(
+  TSSCGI[[2]], #ProxP, proseq1REV
+  TSSCGI[[4]], #ProxP, proseq2REV
+  TSSCGI[[6]], #ProxP, ttseq1REV
+  TSSCGI[[8]], #ProxP, ttseq2REV
+  TSSCGI[[18]], #DistP, proseq1REV
+  TSSCGI[[20]], #DistP, proseq2REV
+  TSSCGI[[22]], #DistP, ttseq1REV
+  TSSCGI[[24]] #DistP, ttseq2REV
+)
+minus_antisense_list <- list(
+  TSSCGI[[9]], #ProxM, proseq1FWD
+  TSSCGI[[11]], #ProxM, proseq2FWD
+  TSSCGI[[13]], #ProxM, ttseq1FWD
+  TSSCGI[[15]], #ProxM, ttseq2FWD
+  TSSCGI[[25]], #DistM, proseq1FWD
+  TSSCGI[[27]], #DistM, proseq2FWD
+  TSSCGI[[29]], #DistM, ttseq1FWD
+  TSSCGI[[31]] #DistM, ttseq2FWD
+)
+
+rm(TSSCGI)
+
+sense_list <- list(
+  rbind(plus_sense_list[[1]], minus_sense_list[[1]]), #Prox, proseq1
+  rbind(plus_sense_list[[2]], minus_sense_list[[2]]), #Prox, proseq2
+  rbind(plus_sense_list[[3]], minus_sense_list[[3]]), #Prox, ttseq1
+  rbind(plus_sense_list[[4]], minus_sense_list[[4]]), #Prox, ttseq2
+  rbind(plus_sense_list[[5]], minus_sense_list[[5]]), #Dist, proseq1
+  rbind(plus_sense_list[[6]], minus_sense_list[[6]]), #Dist, proseq2
+  rbind(plus_sense_list[[7]], minus_sense_list[[7]]), #Dist, ttseq1
+  rbind(plus_sense_list[[8]], minus_sense_list[[8]]) #Dist, ttseq2
+)
+antisense_list <- list(
+  rbind(plus_antisense_list[[1]], minus_antisense_list[[1]]), #Prox, proseq1
+  rbind(plus_antisense_list[[2]], minus_antisense_list[[2]]), #Prox, proseq2
+  rbind(plus_antisense_list[[3]], minus_antisense_list[[3]]), #Prox, ttseq1
+  rbind(plus_antisense_list[[4]], minus_antisense_list[[4]]), #Prox, ttseq2
+  rbind(plus_antisense_list[[5]], minus_antisense_list[[5]]), #Dist, proseq1
+  rbind(plus_antisense_list[[6]], minus_antisense_list[[6]]), #Dist, proseq2
+  rbind(plus_antisense_list[[7]], minus_antisense_list[[7]]), #Dist, ttseq1
+  rbind(plus_antisense_list[[8]], minus_antisense_list[[8]]) #Dist, ttseq2
+)
+
+rm(plus_sense_list)
+rm(plus_antisense_list)
+rm(minus_sense_list)
+rm(minus_antisense_list)
+
+for (i in seq_along(sense_list)){ sense_list[[i]]$dir <- "sense" }
+for (i in seq_along(antisense_list)){ antisense_list[[i]]$dir <- "antisense" }
+
+senseanti <- list(
+  rbind(sense_list[[1]], antisense_list[[1]]), #Prox, proseq1
+  rbind(sense_list[[2]], antisense_list[[2]]), #Prox, proseq2
+  rbind(sense_list[[3]], antisense_list[[3]]), #Prox, ttseq1
+  rbind(sense_list[[4]], antisense_list[[4]]), #Prox, ttseq2
+  rbind(sense_list[[5]], antisense_list[[5]]), #Dist, proseq1
+  rbind(sense_list[[6]], antisense_list[[6]]), #Dist, proseq2
+  rbind(sense_list[[7]], antisense_list[[7]]), #Dist, ttseq1
+  rbind(sense_list[[8]], antisense_list[[8]]) #Dist, ttseq2
+)
+
+rm(sense_list)
+rm(antisense_list)
+```
+
+Next, prox/dist. Structure of the list now? Should be alternating prox-dist, going proseq-rep1, proseq-rep2, then same for ttseq.
+```{r}
+prox_list <- list(
+  senseanti[[1]], #proseq1
+  senseanti[[2]], #proseq2
+  senseanti[[3]], #ttseq1
+  senseanti[[4]] #ttseq2
+)
+dist_list <- list(
+  senseanti[[5]], #proseq1
+  senseanti[[6]], #proseq2
+  senseanti[[7]], #ttseq1
+  senseanti[[8]] #ttseq2
+)
+
+rm(senseanti)
+
+for (i in seq_along(prox_list)){ prox_list[[i]]$class_used <- "prox" }
+for (i in seq_along(dist_list)){ dist_list[[i]]$class_used <- "dist" }
+
+PROXDIST <- list(
+  rbind(prox_list[[1]], dist_list[[1]]), #proseq1
+  rbind(prox_list[[2]], dist_list[[2]]), #proseq2
+  rbind(prox_list[[3]], dist_list[[3]]), #ttseq1
+  rbind(prox_list[[4]], dist_list[[4]]) #ttseq2
+)
+
+rm(prox_list)
+rm(dist_list)
+```
+
+seq_type
+```{r}
+pro_list <- list(
+  PROXDIST[[1]], #proseq1
+  PROXDIST[[2]] #proseq2
+)
+tt_list <- list(
+  PROXDIST[[3]], #ttseq1
+  PROXDIST[[4]] #ttseq2
+)
+
+rm(PROXDIST)
+
+for (i in seq_along(pro_list)){ pro_list[[i]]$seq_type <- "PROseq" }
+for (i in seq_along(tt_list)){ tt_list[[i]]$seq_type <- "TTseq" }
+
+PROTT <- list(
+  rbind(pro_list[[1]], tt_list[[1]]), #r1
+  rbind(pro_list[[2]], tt_list[[2]]) #r2
+)
+
+rm(pro_list)
+rm(tt_list)
+```
+
+replicate
+
+```{r}
+PROTT[[1]]$rep <- "r1"
+PROTT[[2]]$rep <- "r2"
+
+scored_tab <- do.call( rbind, PROTT )
+```
+
+```{r genes}
+skew_classed <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+```{r}
+fully_labeled_test <- merge.data.table( skew_classed, scored_tab, by = "uniq_id" )
+```
+
+
+```{r}
+write_genetsv(fully_labeled_test, "proseq_not_scaled_ttseq_skewclassed.txt", coln=TRUE)
+```

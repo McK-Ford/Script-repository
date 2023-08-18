@@ -1,0 +1,49 @@
+---
+title: "making table for GSEA"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+#NA as 0 or as NA?
+pI_tab <- read.delim("C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V3/project_cell_lines_pI.txt")
+```
+
+```{r}
+gsa_tab = pI_tab %>%
+  separate(col=4, into=c("symbol", NA),
+           sep = "_", remove=TRUE) %>%
+  select(c(4,19,26,33, 40, 47))
+length(unique(gsa_tab$symbol))
+dim(gsa_tab)
+```
+
+#column names are unique, good.
+
+```{r}
+gsa_tab$Description = NA #required column for gsea
+gsa_tab = gsa_tab[,c(1,7,2:6)]
+
+```
+
+```{r}
+colnames(gsa_tab) = c("NAME", "Description", "MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+gsa_na_as_0 = gsa_tab %>% 
+            mutate(MCF7 = replace_na(MCF7, 0),
+                   SUM159 = replace_na(SUM159, 0),
+                   MCF10A = replace_na(MCF10A, 0),
+                   T47D = replace_na(T47D, 0),
+                   MB231 = replace_na(MB231, 0)
+                   )
+```
+
+```{r}
+write.table(gsa_tab, file="gsa_tab.txt", quote=FALSE,
+            sep="\t", row.names = FALSE, col.names = FALSE)
+write.table(gsa_na_as_0, file="gsa_na_as_0.txt", quote=FALSE,
+            sep="\t", row.names = FALSE)
+```
+

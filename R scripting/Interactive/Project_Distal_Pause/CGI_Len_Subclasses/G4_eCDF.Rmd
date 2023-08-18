@@ -1,0 +1,206 @@
+---
+title: "G4 signal analysis"
+output: html_notebook
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r source, message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+source( "~/Script repository/R scripting/Graphing_Functions.R" )
+```
+
+
+```{r}
+mygenes <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+Bed filtering 1
+```{r}
+gene_info_p <- mygenes |> filter( strand == "+" & chrom != "chrX" & gene_l > 150 )
+gene_info_m <- mygenes |> filter( strand == "-" & chrom != "chrX" & gene_l > 150 )
+```
+
+
+If I do G4 eCDF prox/dist ratio:
+For TSS regions (to get pause index, tss regions divided by gene body regions...)
+this isnt' actually prox dist, names are wrong
+```{r}
+TSS_p <- gene_info_p |>
+  select( c( "chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand" ) )
+TSS_m <- gene_info_m |>
+  select( c( "chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand" ) )
+
+colnames( TSS_p ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+colnames( TSS_m ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+```
+
+```{r}
+TSS_p$end <- TSS_p$start + 100
+TSS_m$start <- TSS_m$end - 100
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/CutnTag_n_chip/PublicData/GSE178688_Lyu_2021_HEK293T_G4_CnTandChIPseq/"
+```
+
+
+```{r}
+TSS_tab <- rbind(TSS_p, TSS_m)
+
+CnT_TSS_tab <- score_matrix(
+      bed = TSS_tab,
+      readsource = paste0( DIR, "GSM5395699_CUT-Tag-BG4.bw" ),
+      n = 1,
+      ignorestrand = TRUE,
+      method = "bi_anch",
+      bam_or_bw = "bw"
+      )
+```
+
+```{r}
+colnames(CnT_TSS_tab) = c(colnames(CnT_TSS_tab[,1:6]), "TSSscore")
+```
+
+for legibility...
+```{r}
+CnT_TSS_tab$TSSscore <- CnT_TSS_tab$TSSscore * 1000
+```
+
+For 3' CGI
+```{r}
+cgi3_p <- gene_info_p |>
+  select( c( "chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand" ) )
+cgi3_m <- gene_info_m |>
+  select( c( "chrom",  "gene_s", "gene_e", "uniq_id", "TSS_skew", "strand" ) )
+
+colnames( cgi3_p ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+colnames( cgi3_m ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+
+cgi3_p$start <- cgi3_p$start + 100
+cgi3_m$end <- cgi3_m$end - 100
+
+cgi3_tab <- rbind(cgi3_p, cgi3_m)
+```
+
+```{r}
+CnT_CGI_tab <- score_matrix(
+      bed = cgi3_tab,
+      readsource = paste0( DIR, "GSM5395699_CUT-Tag-BG4.bw" ),
+      n = 1,
+      ignorestrand = TRUE,
+      method = "bi_anch",
+      bam_or_bw = "bw"
+      )
+```
+
+```{r}
+colnames(CnT_CGI_tab) = c(colnames(CnT_CGI_tab[,1:6]), "CGIscore")
+CnT_CGI_tab$CGIscore <- CnT_CGI_tab$CGIscore * 1000
+```
+
+```{r}
+CnT_TSS_tab <- as.data.frame(CnT_TSS_tab)
+CnT_CGI_tab <- as.data.frame(CnT_CGI_tab)
+
+G4_scores <- cbind(CnT_TSS_tab[1], CnT_TSS_tab[7], CnT_CGI_tab[7])
+colnames(G4_scores) <- c("uniq_id", "tss_score", "cgi3_score")
+```
+
+```{r}
+G4_scores$G4_ratio <- G4_scores$tss_score/G4_scores$cgi3_score
+```
+
+So what does the ratio look like?
+
+```{r}
+summary(G4_scores$G4_ratio)
+```
+Oh, should probably add pseudocounts.
+```{r}
+G4_scores$tss_score <- G4_scores$tss_score + 0.1
+G4_scores$cgi3_score <- G4_scores$cgi3_score + 0.1
+G4_scores$G4_ratio <- G4_scores$tss_score/G4_scores$cgi3_score
+```
+
+```{r}
+summary(G4_scores$G4_ratio)
+```
+
+```{r}
+gene_info <- rbind(gene_info_p, gene_info_m)
+parenttab <- merge(gene_info, G4_scores, by = "uniq_id")
+```
+
+do I want to filter out the genes that had no signal at either of the two spots?
+
+```{r}
+distal <- parenttab |>
+  filter(
+  simple_skew_class == "Dist" &
+  tss_score > 0.11 &
+  cgi3_score > 0.11 
+  ) 
+
+proximal <- parenttab |>
+  filter(
+  simple_skew_class == "Prox" &
+    tss_score > 0.11 &
+    cgi3_score > 0.11 
+  ) 
+```
+
+Some form of invisible rounding pseudonumber stuff was screwing with the 0, so I had to go up to 0.11 instead of 0.1. 5029 distal and 5574 proximal, so it's not like either class is the one missing data.
+
+```{r}
+test = wilcox.test(x = proximal$G4_ratio, y = distal$G4_ratio, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+test
+```
+It's significant. Less significant than pausing, only passes the 0.05 stringency P, but still, interesting.
+
+```{r}
+skew_colors <- c("Proximally skewed" = "blue", "Distally skewed" = "red")
+ ggplot() +
+  stat_ecdf(geom="step", data=proximal, aes(G4_ratio, color = "Proximally skewed")) +
+  stat_ecdf(geom="step", data=distal, aes(G4_ratio, color = "Distally skewed")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+   ggtitle("Proximal/Distal G4 ratio by skew class") +
+  scale_color_manual(values = skew_colors) +
+  ylab("Cumulative Distribution") +
+  annotate("text", x = 5, y = 0.75, label = paste0("p=", signif(test$p.value, digits = 4)))
+```
+I see. It's technically different, but nowhere near PRO-seq levels of impressive.

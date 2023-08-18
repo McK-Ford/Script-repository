@@ -1,0 +1,158 @@
+---
+title: "hclust"
+output: html_notebook
+---
+
+```{r c1}
+library(tidyverse)
+library(data.table)
+```
+
+```{r c2}
+pI_tab <- read.delim(
+  "C:/Users/kayle/Box/Vertinolab/GenomicSandbox/project_cell_lines/ProSeq/pI/V3/project_cell_lines_pI.txt"
+  )
+```
+
+```{r c3}
+pI_tab_simple = pI_tab[,c(1:4, 19, 26, 33, 40, 47)]
+```
+
+```{r c4}
+pI_tab_simple = pI_tab_simple %>%
+  separate(symbol, into=c("symbol", NA), sep = "_") %>% filter(!grepl('chrY|chrX', chrom))
+```
+
+Previously, did NA as 0. This time, remove all NA.
+
+```{r c5}
+pI_tab_no_na = pI_tab_simple %>% 
+            filter(!is.na(pI.MCF7) &
+                     !is.na(pI.SUM159) &
+                     !is.na(pI.MCF10A) &
+                     !is.na(pI.T47D) &
+                     !is.na(pI.MB231)                   )
+```
+
+3006 genes
+z score normalize
+get information first
+
+```{r c6}
+pI_tab_log10 = cbind(
+  pI_tab_no_na[,1:4], log10(as.matrix(pI_tab_no_na[,5:9])+1)
+  )
+```
+(log10 is +1 to avoid inducing na by attempting to do log(0). Pretty standard).
+Okay, this time get variance before normalizing all the variance away
+
+```{r c7}
+pI_znorm = pI_tab_log10 %>%
+  rowwise() %>%
+  mutate(stdev = sd(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), meanpi = mean(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), pivar = var(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231))) %>%
+  filter(stdev!=0) #for anything that's all 0s
+```
+
+```{r c8}
+pI_znorm$MCF7norm = (pI_znorm$pI.MCF7-pI_znorm$meanpi)/pI_znorm$stdev
+pI_znorm$SUM159norm = (pI_znorm$pI.SUM159-pI_znorm$meanpi)/pI_znorm$stdev
+pI_znorm$MCF10Anorm = (pI_znorm$pI.MCF10A-pI_znorm$meanpi)/pI_znorm$stdev
+pI_znorm$T47Dnorm = (pI_znorm$pI.T47D-pI_znorm$meanpi)/pI_znorm$stdev
+pI_znorm$MB231norm = (pI_znorm$pI.MB231-pI_znorm$meanpi)/pI_znorm$stdev
+```
+
+```{r c9}
+pI_znorm_top500 <- pI_znorm %>%
+  arrange(desc(pivar)) %>% 
+  slice(1:500)
+```
+
+
+```{r c10}
+pI_mat = as.matrix(pI_znorm_top500[,13:17])
+rownames(pI_mat) = pI_znorm_top500[[4]]
+colnames(pI_mat) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+
+```{r c11}
+heatmap(pI_mat, scale="none", cexCol = 0.8, labRow = "", main = "No NA, row-normalized")
+```
+
+What about without Znorm?
+```{r alt2c10}
+pI_mat2 = as.matrix(pI_znorm_top500[,5:9])
+rownames(pI_mat2) = pI_znorm_top500[[4]]
+colnames(pI_mat2) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+
+Ignore this one, I don't think it gives any useful insights.
+```{r alt2c11}
+heatmap(pI_mat2, scale="none", cexCol = 0.8, labRow = "", main="No NA, no Norm")
+```
+what.
+That didn't happen previously??? So what are the differences? In the previous graph I did NA as 0, because 
+I wasn't 100% sure what they meant biologically (not enough reads in the gene body yes, but are they necessarily all that different from genes with a score of 0? IDK). I also took the top 10% variance instead of the tope 500 variance, but I doubt that's affecting things much. Chunks 1-4 were identical, then handled NA. Log norm and calculating var were identical. I'm also testing this with the old filtering just in case.
+
+Let's do this with NA as 0. So...
+
+```{r alt3c5}
+pI_tab_na_as_0 = pI_tab_simple %>% 
+            mutate(pI.MCF7 = replace_na(pI.MCF7, 0),
+                   pI.SUM159 = replace_na(pI.SUM159, 0),
+                   pI.MCF10A = replace_na(pI.MCF10A, 0),
+                   pI.T47D = replace_na(pI.T47D, 0),
+                   pI.MB231 = replace_na(pI.MB231, 0)
+                   )
+```
+
+
+```{r alt3c6}
+pI_tab_log10_3 = cbind(
+  pI_tab_na_as_0[,1:4], log10(as.matrix(pI_tab_na_as_0[,5:9])+1)
+  )
+```
+
+```{r alt3c7}
+pI_znorm3 = pI_tab_log10_3 %>%
+  rowwise() %>%
+  mutate(stdev = sd(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), meanpi = mean(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231)), pivar = var(c(pI.MCF7, pI.SUM159, pI.MCF10A, pI.T47D, pI.MB231))) %>%
+  filter(stdev!=0)
+```
+
+```{r alt3c8}
+pI_znorm3$MCF7norm = (pI_znorm3$pI.MCF7-pI_znorm3$meanpi)/pI_znorm3$stdev
+pI_znorm3$SUM159norm = (pI_znorm3$pI.SUM159-pI_znorm3$meanpi)/pI_znorm3$stdev
+pI_znorm3$MCF10Anorm = (pI_znorm3$pI.MCF10A-pI_znorm3$meanpi)/pI_znorm3$stdev
+pI_znorm3$T47Dnorm = (pI_znorm3$pI.T47D-pI_znorm3$meanpi)/pI_znorm3$stdev
+pI_znorm3$MB231norm = (pI_znorm3$pI.MB231-pI_znorm3$meanpi)/pI_znorm3$stdev
+```
+
+```{r alt3c9}
+pI_znorm_top500_3 <- pI_znorm3 %>%
+  arrange(desc(pivar)) %>% 
+  slice(1:500)
+```
+
+Now I need to hclust in both directions.
+
+```{r alt3c10}
+pI_mat3 = as.matrix(pI_znorm_top500_3[,13:17])
+rownames(pI_mat3) = pI_znorm_top500_3[[4]]
+colnames(pI_mat3) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+NA as 0, Znorm by rows:
+```{r alt3c11}
+heatmap(pI_mat3, scale="none", cexCol = 0.8, labRow = "", main = "NA as 0, row normalized")
+```
+```{r}
+pI_mat4 = as.matrix(pI_znorm_top500_3[,5:9])
+rownames(pI_mat4) = pI_znorm_top500_3[[4]]
+colnames(pI_mat4) = c("MCF7", "SUM159", "MCF10A", "T47D", "MB231")
+```
+NA as 0 
+```{r}
+heatmap(pI_mat4, scale="none", cexCol = 0.8, labRow = "", main = "NA as 0, no norm")
+heatmap(pI_mat4, scale="row", cexCol = 0.8, labRow = "", main = "NA as 0, no norm")
+```
+
+

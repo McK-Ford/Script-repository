@@ -1,0 +1,177 @@
+---
+title: "Reanalysis of 20220329 intersection"
+output: html_notebook
+---
+
+```{r packages}
+library(tidyverse)
+```
+
+```{r intersection}
+Refseq_curated_cgis_raw <- read.delim(
+  "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/Refseq/Longest_TSS_w_CGI/20220329 version/Refseq_curated_cgis_raw.txt",
+  header = FALSE
+  )
+```
+
+```{r trim and split}
+no_alt_chroms <- Refseq_curated_cgis_raw  |>
+  filter(!grepl("chrY|([\\w_]+)alt|random|fix|v1", V1))
+plus_strand_only <- no_alt_chroms  |> 
+  filter(V9 == "+")  |> 
+  filter(V6 > V2)  |> 
+  distinct(V6, .keep_all = TRUE)
+minus_strand_only <- no_alt_chroms  |> 
+  filter(V9 == "-")  |> 
+  filter(V3 > V7)   |> 
+  distinct(V7, .keep_all = TRUE)
+```
+This removes the alternate chromosomes, then selects for only CGI that actually intersect the TSS, since the initial intersection just looks for an intersection anywhere in the gene. 
+```{r get longest transcript}
+plus_one_tss <- plus_strand_only  |> 
+  group_by(V2)  |> 
+  mutate(min_s = min(V6))  |> 
+  filter(min_s == V6) |> 
+  mutate(max_e = max(V7)) |> 
+  filter(max_e == V7) |> 
+  select(-c(min_s, max_e, V5, V8)) |> 
+  ungroup()
+minus_one_tss <- minus_strand_only  |> 
+  group_by(V2)  |> 
+  mutate(min_s = max(V7))  |> 
+  filter(min_s == V7) |> 
+  mutate(max_e = min(V6)) |> 
+  filter(max_e == V6) |> 
+  select(-c(min_s, max_e, V5, V8)) |> 
+  ungroup()
+
+colnames(plus_one_tss)=c("chrom", "cpg_s", "cpg_e", "cpg_num",
+                         "gene_s", "gene_e", "strand", "name")
+colnames(minus_one_tss)=c("chrom", "cpg_s", "cpg_e", "cpg_num",
+                         "gene_s", "gene_e", "strand", "name")
+```
+To do this accuratly, I need to filter-mutate twice - once to get the first TSS, and then once to get the last TES *for*
+that TSS (I don't want a TES assigned to another transcript, which is what will happen if I filter-mutate once and use both!!!).
+
+Now I would also like to have the first intron-exon boundary.
+
+```{r load in refseq}
+refseq <- read.delim("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/Regions/Untouched source data/refseq/Refseq_curated.hg38.txt.gz", header=TRUE)
+```
+
+```{r split and id}
+refseq_source_plus <- refseq |> filter(strand == "+")
+refseq_source_minus <- refseq |> filter(strand == "-")
+refseq_source_plus$uniq_id <- paste0(refseq_source_plus$name2, "_", refseq_source_plus$txStart)
+refseq_source_minus$uniq_id <- paste0(refseq_source_minus$name2, "_", refseq_source_minus$txEnd)
+```
+
+```{r trim}
+refseq_source_plus <- refseq_source_plus |>
+  select(c(11,17)) |>
+  unique()
+refseq_source_minus <- refseq_source_minus |>
+  select(c(10,17)) |>
+  unique()
+```
+
+```{r get plus ex2in}
+refseq_source_plus_clean <- refseq_source_plus |>
+  separate_wider_delim(
+    cols = exonEnds,
+    delim = ",",
+    names = c("ex2in", NA),
+    too_many = "drop"
+    ) |> 
+  unique()
+```
+
+```{r get minus ex2in}
+refseq_source_minus_clean <- refseq_source_minus |>
+  separate_wider_regex(exonStarts, c(var1 = ".*", ",", var2 = ".*")) |> 
+  separate_wider_regex(var1, c(var3 = ".*", ",", ex2in = ".*"), too_few = "align_start") |> 
+  select(-c("var3", "var2")) |> 
+  unique()
+```
+Explanation for the very weird syntax here - it is surprisingly difficult to retrieve only the last exon start (which is the first intron/exon transition for minus strand genes). The easiest way I found of doing it was to use the recommended by tidyr method to split to the end, a regex, but since exonStarts ends with a comma, the first separation generates a blank column. This also removes the ending comma from the original column, though, which allows me to run the regex again and this time retrieve the final value.
+... I see, anything with only one exon breaks in the original version of the second step. Ugh. Actually it just goes to NA though which is acceptable, maybe should set plus to that too.
+
+```{r asnum}
+refseq_source_plus_clean$ex2in = as.numeric(refseq_source_plus_clean$ex2in)
+refseq_source_minus_clean$ex2in = as.numeric(refseq_source_minus_clean$ex2in)
+```
+
+```{r max ex2in}
+refseq_source_plus_clean_tr <- refseq_source_plus_clean |> 
+  group_by(uniq_id) |> 
+  mutate(max_ex2in = max(ex2in)) |> 
+  filter(ex2in == max_ex2in) |> 
+  select(-c(max_ex2in)) |>
+  ungroup()
+refseq_source_minus_clean_tr <- refseq_source_minus_clean |> 
+  group_by(uniq_id) |> 
+  mutate(max_ex2in = min(ex2in)) |> 
+  filter(ex2in == max_ex2in) |> 
+  select(-c(max_ex2in)) |>
+  ungroup()
+```
+there are a lot bc tss not deduplicated but that's alright, they will be deduplicated when they are merged with the CGI-intersected TSSes. 
+
+```{r}
+plus_one_tss$uniq_id = paste0(plus_one_tss$name, "_", plus_one_tss$gene_s)
+pluswex = merge(plus_one_tss, refseq_source_plus_clean_tr, by = "uniq_id", all.x=TRUE)
+minus_one_tss$uniq_id = paste0(minus_one_tss$name, "_", minus_one_tss$gene_e)
+minuswex = merge(minus_one_tss, refseq_source_minus_clean_tr, by = "uniq_id", all.x=TRUE)
+
+#quick repair so plus matches minus-
+pluswex$ex2in[pluswex$ex2in == pluswex$gene_e] <- NA
+```
+
+```{r some stats plus}
+pluswex$gene_l = pluswex$gene_e - pluswex$gene_s
+pluswex$cpg_l = pluswex$cpg_e - pluswex$cpg_s
+pluswex$TSS_3prime = pluswex$cpg_e - pluswex$gene_s
+pluswex$prime5_TSS = pluswex$gene_s - pluswex$cpg_s
+pluswex$TSS_ex = pluswex$ex2in - pluswex$gene_s
+```
+
+```{r some stats minus}
+minuswex$gene_l = minuswex$gene_e - minuswex$gene_s
+minuswex$cpg_l = minuswex$cpg_e - minuswex$cpg_s
+minuswex$TSS_3prime = minuswex$gene_e - minuswex$cpg_s
+minuswex$prime5_TSS = minuswex$cpg_e - minuswex$gene_e
+minuswex$TSS_ex = minuswex$gene_e - minuswex$ex2in
+```
+
+```{r}
+summary(pluswex$gene_l)
+summary(pluswex$cpg_l)
+summary(pluswex$TSS_3prime)
+summary(pluswex$prime5_TSS)
+summary(pluswex$TSS_ex)
+
+summary(minuswex$gene_l)
+summary(minuswex$cpg_l)
+summary(minuswex$TSS_3prime)
+summary(minuswex$prime5_TSS)
+summary(minuswex$TSS_ex)
+```
+```{r}
+write.table(
+  pluswex,
+  file="refseq_curated_longest_cgi_plus.hg38.txt",
+  row.names=FALSE,
+  col.names=TRUE,
+  quote=FALSE,
+  sep="\t"
+)
+write.table(
+  minuswex,
+  file="refseq_curated_longest_cgi_minus.hg38.txt",
+  row.names=FALSE,
+  col.names=TRUE,
+  quote=FALSE,
+  sep="\t"
+)
+```
+

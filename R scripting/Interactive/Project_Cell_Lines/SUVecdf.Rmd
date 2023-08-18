@@ -1,0 +1,147 @@
+---
+title: "SUV420_ecdf"
+output: html_notebook
+---
+
+in bluehive, run bedtools intersect
+
+```{r packages}
+library(tidyverse)
+```
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/Project_Cell_Lines/Peppro_analysis/protein_coding_only/eCDF/SUV420/"
+MB231_suv <- read.delim(
+  paste0(DIR, "MB231_suv_pI.tsv"),
+  header = FALSE
+  )
+MCF7_suv <- read.delim(
+  paste0(DIR, "MCF7_suv_pI.tsv"),
+  header = FALSE
+  )
+SUM159_suv <- read.delim(
+  paste0(DIR, "SUM159_suv_pI.tsv"),
+  header = FALSE
+  )
+T47D_suv <- read.delim(
+  paste0(DIR, "T47D_suv_pI.tsv"),
+  header = FALSE
+  )
+```
+
+```{r}
+library(biomaRt)
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "https://useast.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+```
+
+
+```{r}
+suvPOS_lst <- list(MB231_suv = MB231_suv,
+               MCF7_suv = MCF7_suv,
+               SUM159_suv = SUM159_suv,
+               T47D_suv = T47D_suv
+               )
+suvNEG_lst <- suvPOS_lst
+for (i in seq_along(suvPOS_lst)) {
+  colnames(suvPOS_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand", "score")
+    annotLookup = getBM(
+    mart = mart,
+    attributes = c(
+      "hgnc_symbol",
+      "gene_biotype"),
+    filter = "hgnc_symbol",
+    values = suvPOS_lst[[i]]$symbol,
+    uniqueRows=TRUE)
+  suvPOS_lst[[i]] <- merge(suvPOS_lst[[i]], annotLookup, by.x = "symbol",
+                     by.y = "hgnc_symbol", all = TRUE)
+ suvPOS_lst[[i]] = suvPOS_lst[[i]] |>
+    filter(suvPOS_lst[[i]][[7]] > 0 & suvPOS_lst[[i]][[8]] == "protein_coding")
+   print(
+    paste0(
+      "Length of POS ",
+      names(suvPOS_lst)[[i]],
+      " is: ",
+      dim(suvPOS_lst[[i]])[1]
+      )
+    )
+  colnames(suvNEG_lst[[i]]) = c("chrom", "start", "end", "symbol", "pI", "strand", "score")
+  suvNEG_lst[[i]] <- merge(suvNEG_lst[[i]], annotLookup, by.x = "symbol",
+                     by.y = "hgnc_symbol", all = TRUE)
+  suvNEG_lst[[i]] = suvNEG_lst[[i]] |>
+    filter(suvNEG_lst[[i]][[7]] == 0 & suvNEG_lst[[i]][[8]] == "protein_coding")
+  print(
+    paste0(
+      "Length of NEG ",
+      names(suvNEG_lst)[[i]],
+      " is: ",
+      dim(suvNEG_lst[[i]])[1]
+      )
+    )
+}
+```
+
+```{r}
+mytheme = theme(
+  panel.background=element_blank(),
+  text=element_text(color="black",face="bold",family="sans"),
+  axis.text=element_text(color="black"),
+  axis.ticks=element_line(color="black"),
+  plot.margin=unit(c(0.25, 0.25, .25, 0.25),"cm"),
+  plot.title=element_text(vjust=2, hjust=0.5),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  axis.title.y=element_text(vjust=0),
+  axis.title.x=element_text(vjust=0),
+  panel.border = element_blank(),
+  axis.line=element_line()
+)
+suv_colors <- c("SUV420H2 Positive" = "blue", "SUV420H2 Negative" = "red")
+```
+
+```{r}
+suvpval_lst <- list(1:4)
+for (i in seq_along(suvPOS_lst)) {
+  test = wilcox.test(x = suvPOS_lst[[i]]$pI, y = suvNEG_lst[[i]]$pI, paired = FALSE,
+            conf.int = TRUE, correct = FALSE)
+  suvpval_lst[[i]] = test$p.value
+}
+```
+
+
+```{r}
+title_list <- list("MB231",
+                   "MCF7", 
+                   "SUM159",
+                   "T47D"
+                   )
+suv_gplot = title_list
+
+for (i in seq_along(suvPOS_lst)) {
+  message(i)
+  suv_gplot[[i]] <- local({
+    i <- i
+    suv_gplot <- ggplot() +
+  stat_ecdf(geom="step", data = suvPOS_lst[[i]], aes(pI, color = "SUV420H2 Positive")) +
+  stat_ecdf(geom="step", data = suvNEG_lst[[i]], aes(pI, color = "SUV420H2 Negative")) +
+  mytheme +
+  scale_x_log10(n.breaks=6, labels=scales::label_comma()) +
+  ylab("Cumulative Distribution") +
+  ggtitle(title_list[[i]]) +
+  scale_color_manual(values = suv_colors) +
+  theme(legend.position = c(0.2, 0.8),
+        legend.key = element_blank(),
+        legend.title = element_blank()) +
+  annotate("text", x = 0.8, y = 0.2, label = paste0("p=", signif(suvpval_lst[[i]], digits = 4)))
+    print(suv_gplot)
+  })
+}
+```
+
+```{r}
+pdf(file = "suv_cdf.pdf", width = 7)
+for (i in seq_along(suv_gplot)) {print(suv_gplot[[i]])}
+dev.off()
+```
+
+

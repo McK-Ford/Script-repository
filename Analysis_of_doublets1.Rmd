@@ -1,0 +1,127 @@
+---
+title: "Analysis of Doublets 1"
+output: html_notebook
+---
+
+```{r}
+sce <- readRDS( "sce.rds" )
+```
+
+S4 vectors data structure
+```{r}
+library( SingleCellExperiment )
+```
+
+methods:
+First paper discusses scDblFinder, which is implemented in bioconductor
+Input is count matrix or SingleCellExperiment object
+'complementary to doublets identified via cell hashes and SNPs - hash/snp method is very good at IDing cells of same type from two samples (homotypic doublets) which are not identifiable by this package, but hashes can't identify doublets made of cells of the same sample (even if heterotypic, two cell types) which this method can do'.
+Several methods, but the main one is the scDblFinder method, which 'combines both known doublets and cluster based artificial doublets.'
+Hmm. That's more recent than any of the methods covered in the overview paper.
+
+```{r}
+set.seed(123)
+library(scDblFinder)
+```
+```{r}
+training <- read.csv("~/training.csv", header=FALSE)
+```
+What's the existing doublet rate?
+```{r}
+setDT(training)
+num_train_dub <- dim(training[ V2==1 ])[[1]]
+num_train_sing <- dim(training[ V2==0 ])[[1]]
+dubrate <- num_train_dub/(num_train_sing+num_train_dub)
+```
+...I had to load in data.table because I forgot how to subset in base R. Wow. Sad.
+14.5% in the training data. Is that actually the correct way to view this?
+Yes, this is what github says: Importantly, the training data are randomly sampled from the full data and thus provides an estimate of the true fraction of doublets.
+How well does it work raw?
+```{r}
+sce2 <- scDblFinder( sce )
+```
+
+Let's keep clusters null, we want accuracy over speed here.
+But that is pretty close to the training data number...
+Actually, they do say if it's multi cell type cluster can be more accurate.
+```{r}
+sce3 <- scDblFinder( sce, clusters = TRUE )
+```
+Ah that's a more generous threshold (= less doublets).
+Let's check a couple things. I hate S4 classes so much...
+```{r}
+head(sce2$scDblFinder.score)
+summary(sce2$scDblFinder.class)
+```
+Expected with training data would be ~3183, so I don't feel too bad about this even at this point.
+
+Do we have multiple samples by the way, and do I have a way to filter out low read count cells (and is it worth it to try, I would still need to call them, though odds are typically good they're singlet...)
+If we have multiple samples I need to figure out how to get that from the sce object.
+
+```{r}
+assay(sce)
+```
+Okay, those are gene names on the rows, the suppressed columns are the UMIs. 
+Digging into SCE further in the dropdown I really don't think there's samples. So that's one thing we don't need to refine.
+
+
+knownDoublets An optional logical vector of known doublets (e.g. through cell barcodes), or the
+name of a colData column of ‘sce‘ containing that information. The way these
+are used depends on the ‘knownUse‘ argument.
+
+So it won't listen to that as is. So to get it to work... Actually, that could be worse. Take the sce and retrieve the UMIs, right? Then assign them true or false based on whether they're present in the 'known_doublet' training vector. Try both discard and positive for knownUse.
+
+```{r}
+known_dubs <- training[ V2==1 ][[1]]
+umis <- colData( sce )
+```
+...What the heck is a DFrame object.
+```{r}
+umis <- colnames( sce )
+tf <- ifelse( umis %in% known_dubs, 1, 0 )
+```
+
+Now, there should be 145 trues in tf.
+```{r}
+sum( tf, na.rm = TRUE )
+```
+:)
+
+Okay, try with default behavior first...Actually there isn't a default, try both. 
+```{r}
+tf <- as.logical(tf)
+sce4 <- scDblFinder( sce, knownDoublets = tf, knownUse = 'discard', verbose = TRUE )
+```
+hmm okay, sce2 is still the closest though this might be within nonsig dif range.
+```{r}
+sce5 <- scDblFinder( sce, knownDoublets = tf, knownUse = 'positive' )
+```
+Ha, okay 13.6 instead of 13.5 might not be that much closer, what is it anyway?
+```{r}
+summary(sce2$scDblFinder.class)
+summary(sce5$scDblFinder.class)
+```
+Lol, 25 more doublets called. Still, being 125 away from expected from training is worse than being 100 away (expected was around ~3183) so let's go with sce5.
+```{r}
+predictN <- colnames( sce5 )
+predictS <- as.character( sce5$scDblFinder.class )
+predictTF <- ifelse( predictS == "doublet", 1, 0 )
+prediction <- cbind( predictN, predictTF )
+```
+
+check to make sure conversion nums matches up? Factors can be weird sometimes
+```{r}
+sum( prediction[[2]], na.rm = TRUE )
+```
+Oh ffs, why did R convert predictTF into a character.Friggin matrices thats why.
+```{r}
+prediction <- as.data.frame(prediction)
+prediction[[2]] <- as.numeric(prediction[[2]])
+sum( prediction[[2]], na.rm = TRUE )
+```
+Awesome, number matches number.
+
+```{r}
+write.table( prediction, file = "prediction.csv", row.names = FALSE, col.names = FALSE, quote = FALSE, sep = "," )
+```
+
