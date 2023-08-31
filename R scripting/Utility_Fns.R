@@ -21,9 +21,10 @@ readcounts <- function( bam, pairedEnd, debug = FALSE, ... ) {
   require( Rsamtools )
   read_counts <- if( pairedEnd ) countBam(
     bam,
-    param = ScanBamParam( flag = scanBamFlag( isFirstMateRead = TRUE ) )
+    param = ScanBamParam( flag = scanBamFlag( isProperPair = TRUE, isFirstMateRead = TRUE, isSecondaryAlignment = FALSE, isDuplicate = FALSE ) ) 
   )$records else
-    countBam( bam )$records
+    countBam( bam,
+              param = ScanBamParam( flag = scanBamFlag( isSecondaryAlignment = FALSE, isDuplicate = FALSE ) ) )$records
   if ( debug ) print( paste0( "rnorm ", read_counts ) )
   return( read_counts )
 }

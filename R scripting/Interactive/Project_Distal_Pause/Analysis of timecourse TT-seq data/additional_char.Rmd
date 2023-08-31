@@ -1,0 +1,162 @@
+---
+title: "Some additional characterization of the island?"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE}
+library( tidyverse )
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+source( "~/Script repository/R scripting/Graphing_Functions.R" )
+```
+```{r mygenes}
+mygenes <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+library(ggpubr)
+geom <- mygenes |> 
+  ggplot( aes( x = TSS_skew, y = CGI3_skew ) ) +
+      labs( title = "TSS_CGI3_skew_relationship" ) +
+      scale_x_continuous( name = "TSS skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      scale_y_continuous( name = "CGI3 skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      geom_bin_2d( bins = 100 ) +
+      mytheme +
+      geom_hline( yintercept = 0, linetype = "dashed" ) +
+      geom_vline( xintercept = 0, linetype = "dashed" ) +
+      geom_smooth( method = lm, se = FALSE, linetype = "dotted", color = "red" ) +
+  stat_cor( aes( label = paste( after_stat( rr.label ), after_stat( p.label ), sep = "~" ) ), color = "red", geom = "label") +
+  theme(aspect.ratio=1)
+geom
+```
+
+```{r}
+geom <- mygenes |> 
+  ggplot( aes( x = TSS_skew, y = CGI5_skew ) ) +
+      labs( title = "TSS_CGI5_skew_relationship" ) +
+      scale_x_continuous( name = "TSS skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      scale_y_continuous( name = "CGI5 skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      geom_bin_2d( bins = 100 ) +
+      mytheme +
+      geom_hline( yintercept = 0, linetype = "dashed" ) +
+      geom_vline( xintercept = 0, linetype = "dashed" ) +
+      geom_smooth( method = lm, se = FALSE, linetype = "dotted", color = "red" ) +
+  stat_cor( aes( label = paste( after_stat( rr.label ), after_stat( p.label ), sep = "~" ) ), color = "red", geom = "label") +
+  theme(aspect.ratio=1)
+geom
+```
+
+Okay, so higher TSS skew is slightly correlated with higher 3' skew, but not correlated at all with any difs in 5' end skew. The 3' correlation makes a bit of sense, given that the gene itself is slightly positively skewed. Some other comparisons:
+
+```{r}
+geom <- mygenes |> 
+  ggplot( aes( x = TSS_skew, y = TES_skew ) ) +
+      labs( title = "TSS_TES_skew_relationship" ) +
+      scale_x_continuous( name = "TSS skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      scale_y_continuous( name = "TES skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      geom_bin_2d( bins = 100 ) +
+      mytheme +
+      geom_hline( yintercept = 0, linetype = "dashed" ) +
+      geom_vline( xintercept = 0, linetype = "dashed" ) +
+      geom_smooth( method = lm, se = FALSE, linetype = "dotted", color = "red" ) +
+  stat_cor( aes( label = paste( after_stat( rr.label ), after_stat( p.label ), sep = "~" ) ), color = "red", geom = "label") +
+  theme(aspect.ratio=1)
+geom
+```
+So, the TSS 3' CGI skew relationship isn't 'just' because they're both sense, because when you get down to the TSS you no longer have a relationship.
+
+```{r}
+geom <- mygenes |> filter( TSS_ex > 100 ) |> 
+  ggplot( aes( x = TSS_skew, y = x2in_skew ) ) +
+      labs( title = "TSS_x2in_skew_relationship" ) +
+      scale_x_continuous( name = "TSS skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      scale_y_continuous( name = "x2in skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      geom_bin_2d( bins = 100 ) +
+      mytheme +
+      geom_hline( yintercept = 0, linetype = "dashed" ) +
+      geom_vline( xintercept = 0, linetype = "dashed" ) +
+      geom_smooth( method = lm, se = FALSE, linetype = "dotted", color = "red" ) +
+  stat_cor( aes( label = paste( after_stat( rr.label ), after_stat( p.label ), sep = "~" ) ), color = "red", geom = "label") +
+  theme(aspect.ratio=1)
+geom
+```
+Okay, that's interesting. There's a pretty strong relationship between TSS skew and the skew at the first exon-intron transition even after I filtered things a little to account for short first exons. Still might be a length effect - transition points near the TSS may just correlate better with TSS skew.
+
+```{r}
+geom <- mygenes |> filter( TSS_ex > 200 ) |> 
+  ggplot( aes( x = TSS_skew, y = x2in_skew ) ) +
+      labs( title = "TSS_x2in_skew_relationship" ) +
+      scale_x_continuous( name = "TSS skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      scale_y_continuous( name = "x2in skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      geom_bin_2d( bins = 100 ) +
+      mytheme +
+      geom_hline( yintercept = 0, linetype = "dashed" ) +
+      geom_vline( xintercept = 0, linetype = "dashed" ) +
+      geom_smooth( method = lm, se = FALSE, linetype = "dotted", color = "red" ) +
+  stat_cor( aes( label = paste( after_stat( rr.label ), after_stat( p.label ), sep = "~" ) ), color = "red", geom = "label") +
+  theme(aspect.ratio=1)
+geom
+```
+Yeah, you lose the relationship when you look at longer transition points (this is filtered to 200+.) So it's maybe some sort of 'bleedthrough' effect except not really since it's based on sequence so it's not a 'nearby reads' problem.
+Does CGI correlation weaken dramatically with distance? Admittedly that distance is much longer, median is 535...
+```{r}
+geom <- mygenes |> filter( TSS_3prime > 500 ) |> 
+  ggplot( aes( x = TSS_skew, y = CGI3_skew ) ) +
+      labs( title = "TSS_CGI3_skew_relationship" ) +
+      scale_x_continuous( name = "TSS skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      scale_y_continuous( name = "CGI3 skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      geom_bin_2d( bins = 100 ) +
+      mytheme +
+      geom_hline( yintercept = 0, linetype = "dashed" ) +
+      geom_vline( xintercept = 0, linetype = "dashed" ) +
+      geom_smooth( method = lm, se = FALSE, linetype = "dotted", color = "red" ) +
+  stat_cor( aes( label = paste( after_stat( rr.label ), after_stat( p.label ), sep = "~" ) ), color = "red", geom = "label") +
+  theme(aspect.ratio=1)
+geom
+```
+Hmm it's still statistically signif even with filtered to ~ above median (same as x2in)... interesting.
+```{r}
+geom <- mygenes |> 
+  ggplot( aes( x = CGI3_skew, y = CGI5_skew ) ) +
+      labs( title = "CGI3_CGI5_skew_relationship" ) +
+      scale_x_continuous( name = "CGI3 skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      scale_y_continuous( name = "CGI5 skew", n.breaks = 9, limits = c( -1, 1 ) ) +
+      geom_bin_2d( bins = 100 ) +
+      mytheme +
+      geom_hline( yintercept = 0, linetype = "dashed" ) +
+      geom_vline( xintercept = 0, linetype = "dashed" ) +
+      geom_smooth( method = lm, se = FALSE, linetype = "dotted", color = "red" ) +
+  stat_cor( aes( label = paste( after_stat( rr.label ), after_stat( p.label ), sep = "~" ) ), color = "red", geom = "label") +
+  theme(aspect.ratio=1)
+geom
+```
+CGI 3' skew is independent of what's going on in the sense direction. Which isn't necessarily suprising for the downstream materials, and I suppose I didn't do a 'TSS-100' true antisense calculation for skew so even when comparing to the TSS I'm comparing to something that's slightly upstream for it, but still, it's intriguing.
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,788 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r loading, message=FALSE, warning=FALSE}
+library( tidyverse )
+```
+
+```{r message=FALSE, warning=FALSE}
+source( "~/Script repository/R scripting/Matrix_Fns.R" ) #5/2/23 commit at my github https://github.com/McK-Ford/Script-repository/blob/main/R%20scripting/Matrix.R
+source( "~/Script repository/R scripting/Graphing_Functions.R" )
+```
+```{r mygenes}
+mygenes <- fread( 
+  file = "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/beds/skew_classed_refseq_wheader.txt"
+  )
+```
+
+Bed filtering
+```{r bf1}
+TSS_CGI_E_p <- mygenes |>
+  filter( strand == "+" & chrom != "chrX" & TSS_3prime > 300  & TSS_3prime > 300 & gene_l > 900 & gene_l > 900 ) |>
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_CGI_E_m <- mygenes |> filter( strand == "-" & chrom != "chrX" & TSS_3prime > 300 & gene_l > 900  ) |>
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+
+CGI5_p <- mygenes |>
+  filter( strand == "+" & chrom != "chrX" & TSS_3prime > 300 & prime5_TSS > 300 & gene_l > 900  ) |>
+  select( c("chrom", "cpg_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+CGI5_m <- mygenes |>
+  filter( strand == "-" & chrom != "chrX" & TSS_3prime > 300 & prime5_TSS > 300 & gene_l > 900  ) |>
+  select( c("chrom",  "cpg_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+```
+That does put us at only 5k total genes from our 13k starting point. Based on a quick run check, most of the loss is due to short upstream distances, so maybe only filter that for the upstream where it's relevant.
+```{r tab_ls}
+tab_ls <- list(
+  TSS_CGI_E_p,
+  TSS_CGI_E_m,
+  CGI5_p,
+  CGI5_m
+)
+for (i in seq_along( tab_ls ) ) {
+  colnames( tab_ls[[i]] ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+}
+```
+
+So, based on previous graph, TSS region is 0-300 by tss, cgi is 0-600 after cgi, and upstream edge is -300-0
+```{r}
+TSSp  <- tab_ls[[1]]
+TSSm  <- tab_ls[[2]] 
+CpG5p <- tab_ls[[3]] 
+CpG5m <- tab_ls[[4]] 
+CpG3p <- tab_ls[[1]] 
+CpG3m <- tab_ls[[2]] 
+
+TSSm$start  <- TSSm$end - 300 
+CpG3p$start <- CpG3p$end
+CpG3p$end <- CpG3p$end + 600 
+TSSp$end  <- TSSp$start + 300
+CpG3m$end <- CpG3m$start
+CpG3m$start <- CpG3m$start - 600
+
+CpG5p$end <- CpG5p$start 
+CpG5p$start <- CpG5p$start - 600
+CpG5m$start <- CpG5m$end
+CpG5m$end <- CpG5m$end + 600
+
+TSS_up_p <- mygenes |>
+  filter( strand == "+" & chrom != "chrX" & TSS_3prime > 300  & TSS_3prime > 300 & gene_l > 900 & gene_l > 900 & prime5_TSS > 300 ) |>
+  select( c("chrom", "gene_s", "cpg_e", "uniq_id", "TSS_skew", "strand") )
+TSS_up_m <- mygenes |> filter( strand == "-" & chrom != "chrX" & TSS_3prime > 300 & gene_l > 900 & prime5_TSS > 300  ) |>
+  select( c("chrom",  "cpg_s", "gene_e", "uniq_id", "TSS_skew", "strand") )
+colnames( TSS_up_p ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+colnames( TSS_up_m ) <- c(
+    "chrom",
+    "start",
+    "end",
+    "uniq_id",
+    "score",
+    "strand"
+    )
+TSS_up_p$end <- TSS_up_p$start
+TSS_up_p$start <- TSS_up_p$start - 300
+TSS_up_m$start <- TSS_up_m$end
+TSS_up_m$end <- TSS_up_m$end + 300
+```
+
+Did a quick check -  the bam and bw do have slightly different results, but the extremes are the same. Still, prefer the bam as it's summarized only once.
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE173374_Polenkowski_2021_HEK293T_TTseq/Remapped/bam/"
+
+ctrl <- list(
+  min10 = paste0( DIR, "TTseq_ctrl10_GSE173374.sorted.dupMark.bam"    ),
+  min20 = paste0( DIR, "TTseq_ctrl20_GSE173374.sorted.dupMark.bam"    ),
+  min30 = paste0( DIR, "TTseq_ctrl30_GSE173374.sorted.dupMark.bam"    ),
+  min40 = paste0( DIR, "TTseq_ctrl40_GSE173374.sorted.dupMark.bam"    )
+)
+
+```
+As paula said, we are ignoring thoc5 for now. I actually never remapped the non-timecourse, so we're going to leave that because I'd have to focus on the bigwigs there.
+
+
+```{r eval=FALSE}
+CGI_LoL <- rep( list( vector( mode = "list", length = 6 ) ), 4 )
+for ( bam in seq_along( ctrl ) ) {
+  for ( bed in seq_along( bed_list ) ) {
+    CGI_LoL[[bam]][[bed]] <- score_matrix(
+      bed = bed_list[[bed]],
+      readsource = ctrl[[bam]],
+      n=1,
+      method = "bi_anch",
+      bam_or_bw = "bam",
+      revcomp = TRUE
+      )
+  }
+}
+```
+Um this is taking forever (as in a hour plus, which doesn't seem right for a very simple operation). Should check the upstream edge stuff too...Ah, memory limitations Ugh. is it because it's bam not bw?.
+
+was having this error Error in (function (classes, fdef, mtable) :
+unable to find an inherited method for function ‘dims’ for signature ‘"DFrame"’ when I interrupted it, was that just because of the interrupt?
+
+Let's do it BW then. Later I need to run some tests to figure out why my bam method got so slow - maybe starting to use bam signals package would help it.
+
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE173374_Polenkowski_2021_HEK293T_TTseq/Remapped/"
+
+ctrlp <- list(
+  min10 = paste0( DIR, "TTseq_ctrl10_GSE173374.fwd.bw"    ),
+  min20 = paste0( DIR, "TTseq_ctrl20_GSE173374.fwd.bw"    ),
+  min30 = paste0( DIR, "TTseq_ctrl30_GSE173374.fwd.bw"    ),
+  min40 = paste0( DIR, "TTseq_ctrl40_GSE173374.fwd.bw"    )
+)
+ctrlm <- list(
+  min10 = paste0( DIR, "TTseq_ctrl10_GSE173374.rev.bw"    ),
+  min20 = paste0( DIR, "TTseq_ctrl20_GSE173374.rev.bw"    ),
+  min30 = paste0( DIR, "TTseq_ctrl30_GSE173374.rev.bw"    ),
+  min40 = paste0( DIR, "TTseq_ctrl40_GSE173374.rev.bw"    )
+)
+```
+
+```{r}
+TSSp_ls <- lapply(ctrlp, score_matrix, bed = TSSp, n = 1, method = "bi_anch", bam_or_bw = "bw")
+TSSm_ls <- lapply(ctrlm, score_matrix, bed = TSSm, n = 1, method = "bi_anch", bam_or_bw = "bw")
+
+CpG3p_ls <- lapply(ctrlp, score_matrix, bed = CpG3p, n = 1, method = "bi_anch", bam_or_bw = "bw")
+CpG3m_ls <- lapply(ctrlm, score_matrix, bed = CpG3m, n = 1, method = "bi_anch", bam_or_bw = "bw")
+
+CpG5p_ls <- lapply(ctrlm, score_matrix, bed = CpG5p, n = 1, method = "bi_anch", bam_or_bw = "bw")
+CpG5m_ls <- lapply(ctrlp, score_matrix, bed = CpG5m, n = 1, method = "bi_anch", bam_or_bw = "bw")
+
+TSS_up_p_ls <- lapply(ctrlm, score_matrix, bed = TSS_up_p, n = 1, method = "bi_anch", bam_or_bw = "bw")
+TSS_up_m_ls <- lapply(ctrlp, score_matrix, bed = TSS_up_m, n = 1, method = "bi_anch", bam_or_bw = "bw")
+```
+
+```{r}
+LoL <- list(
+  TSS = list(TSSp_ls, TSSm_ls),
+  cpg3 = list(CpG3p_ls, CpG3m_ls),
+  cpg5 = list(CpG5p_ls, CpG5m_ls),
+  tss_up = list(TSS_up_p_ls, TSS_up_m_ls)
+  )
+```
+
+```{r}
+timelabs <- list("min10", "min20", "min30", "min40")
+for (i in seq_along(LoL)) {
+  for (j in seq_along(LoL[[i]])){
+    for (k in seq_along(LoL[[i]][[j]])){
+      LoL[[i]][[j]][[k]]$timepoint <- timelabs[[k]]
+    }
+  }
+}
+```
+
+probably should have done non time course compare since im not using the bam files. Can do at end, i suppose.
+
+merge strands and timepoints. then, add some location ids and combine. Combine back to base table.
+```{r}
+for (i in seq_along(LoL)) {
+  for (j in seq_along(LoL[[i]])){
+    LoL[[i]][[j]] <- do.call(rbind, LoL[[i]][[j]])
+  }
+  LoL[[i]] <- do.call(rbind, LoL[[i]])
+}
+```
+
+```{r}
+colnames(LoL[[1]]) <- c("uniq_id", "chrom", "start", "end", "score", "strand", "TSS_TT_score", "timepoint")
+tmp1 <- LoL[[2]][, c(1, 7, 8)]
+colnames(tmp1) <- c("uniq_id", "CpG3_TT_score", "timepoint")
+tmp2 <- LoL[[3]][, c(1, 7, 8)]
+colnames(tmp2) <- c("uniq_id", "CpG5_TT_score", "timepoint")
+tmp3 <- LoL[[4]][, c(1, 7, 8)]
+colnames(tmp3) <- c("uniq_id", "TSSup_TT_score", "timepoint")
+```
+
+```{r}
+tmp1 <- merge.data.table( LoL[[1]], tmp1, by = c("uniq_id", "timepoint"), all = TRUE )
+tmp2 <- merge.data.table( tmp1, tmp2, by = c("uniq_id", "timepoint"), all = TRUE )
+tmp3 <- merge.data.table( tmp2, tmp3, by = c("uniq_id", "timepoint"), all = TRUE )
+```
+
+need nontimecourse too
+```{r}
+timecourse_table <- copy(tmp3)
+```
+```{r}
+DIR <- "C:/Users/kayle/Box/Vertinolab/McKayla Ford/Data/NascentSeq/PublicData/GSE156400_Fang_2021_HEK293T_PROseq_Rloops/TT-seq/"
+TSSptt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.fwd.bw"), bed = TSSp, n = 1, method = "bi_anch", bam_or_bw = "bw")
+TSSmtt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.rev.bw"), bed = TSSm, n = 1, method = "bi_anch", bam_or_bw = "bw")
+
+CpG3ptt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.fwd.bw"), bed = CpG3p, n = 1, method = "bi_anch", bam_or_bw = "bw")
+CpG3mtt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.rev.bw"), bed = CpG3m, n = 1, method = "bi_anch", bam_or_bw = "bw")
+
+CpG5ptt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.rev.bw"), bed = CpG5p, n = 1, method = "bi_anch", bam_or_bw = "bw")
+CpG5mtt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.fwd.bw"), bed = CpG5m, n = 1, method = "bi_anch", bam_or_bw = "bw")
+
+TSS_up_ptt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.rev.bw"), bed = TSS_up_p, n = 1, method = "bi_anch", bam_or_bw = "bw")
+TSS_up_mtt <- score_matrix(readsource = paste0(DIR, "GSM4730177_HEK293T-TTseq-rep2.fwd.bw"), bed = TSS_up_m, n = 1, method = "bi_anch", bam_or_bw = "bw")
+```
+
+```{r}
+TSStt <- rbind(TSSptt, TSSmtt)
+TSStt$timepoint <- "notime"
+
+CpG3tt <- rbind(CpG3ptt, CpG3mtt)
+CpG3tt$timepoint <- "notime"
+
+CpG5tt <- rbind(CpG5ptt, CpG5mtt)
+CpG5tt$timepoint <- "notime"
+
+TSS_uptt <- rbind(TSS_up_ptt, TSS_up_mtt)
+TSS_uptt$timepoint <- "notime"
+```
+
+```{r}
+colnames(TSStt) <- c("uniq_id", "chrom", "start", "end", "score", "strand", "TSS_TT_score", "timepoint")
+tmp1 <- CpG3tt[, c(1, 7, 8)]
+colnames(tmp1) <- c("uniq_id", "CpG3_TT_score", "timepoint")
+tmp2 <- CpG5tt[, c(1, 7, 8)]
+colnames(tmp2) <- c("uniq_id", "CpG5_TT_score", "timepoint")
+tmp3 <- TSS_uptt[, c(1, 7, 8)]
+colnames(tmp3) <- c("uniq_id", "TSSup_TT_score", "timepoint")
+```
+
+```{r}
+tmp1 <- merge.data.table( TSStt, tmp1, by = c("uniq_id", "timepoint"), all = TRUE )
+tmp2 <- merge.data.table( tmp1, tmp2, by = c("uniq_id", "timepoint"), all = TRUE )
+tmp3 <- merge.data.table( tmp2, tmp3, by = c("uniq_id", "timepoint"), all = TRUE )
+```
+
+```{r}
+tmp4 <- rbind(timecourse_table, tmp3)
+```
+
+
+```{r}
+fully_labeled_test <- merge.data.table( mygenes, tmp4, by = "uniq_id", all = TRUE )
+```
+
+Could do correlation plot on signal ratio vs skew ratio!!! That would incorporate strength, so if something was only 'slightly' proximal, that might not act the same way the skew 'classes' do.
+
+Let's actually multiply the columns for legibility reasons (it doesn't change actual values, which are just very small bc of the ways the bigwigs work.)
+
+And divide by 2 for the 600 long sections (NM, reran without that because I already have a length adjustor in the function), and add a 0.001 pseudocount!
+
+```{r}
+fully_labeled_test$TSS_TT_score <- (fully_labeled_test$TSS_TT_score * 10000) + 0.001
+fully_labeled_test$CpG3_TT_score <- (fully_labeled_test$CpG3_TT_score * 10000) + 0.001
+fully_labeled_test$CpG5_TT_score <- (fully_labeled_test$CpG5_TT_score * 10000) + 0.001
+fully_labeled_test$TSSup_TT_score <- (fully_labeled_test$TSSup_TT_score * 10000) + 0.001
+```
+
+Okay, some of these values aren't actually going to be useful because there wasn't reads.
+
+First of all, if timepoint is NA it was one of the genes we filtered out earlier, remove those.
+```{r}
+fully_labeled_test <- fully_labeled_test |> filter(!is.na(timepoint))
+```
+
+Replace 0 with NA. (0 is currently 0.001, but to account for floating point errors we're saying less than 0.0011)
+```{r}
+fully_labeled_test[fully_labeled_test$TSS_TT_score <= 0.0011 ]$TSS_TT_score = NA
+fully_labeled_test[fully_labeled_test$CpG3_TT_score <= 0.0011 ]$CpG3_TT_score = NA
+fully_labeled_test[fully_labeled_test$CpG5_TT_score <= 0.0011 ]$CpG5_TT_score = NA
+fully_labeled_test[fully_labeled_test$TSSup_TT_score <= 0.0011 ]$TSSup_TT_score = NA
+```
+Remove ones where all sites are NA.
+```{r}
+fully_labeled_test <- fully_labeled_test |> filter(!is.na(TSS_TT_score) | !is.na(CpG3_TT_score) | !is.na(CpG5_TT_score) | !is.na(TSSup_TT_score))
+```
+Get my ratios
+
+```{r}
+fully_labeled_test$TSS_ov_CGI3_skew <- fully_labeled_test$TSS_skew - fully_labeled_test$CGI3_skew
+fully_labeled_test$TSS_ov_CGI5_skew <- fully_labeled_test$TSS_skew - fully_labeled_test$CGI5_skew
+fully_labeled_test$TSS_ov_CGI3_TT <- fully_labeled_test$TSS_TT_score/fully_labeled_test$CpG3_TT_score
+fully_labeled_test$TSS_ov_CGI5_TT <- fully_labeled_test$TSSup_TT_score/fully_labeled_test$CpG5_TT_score
+```
+
+So, okay, how do these numbers work. If TSS ov CGI3 skew is high (positive) this means that the TSS is strongly skewed and the CGI is weakly skewed or even anti-skewed. If it's high negative, that means the CGI edge is strongly skewed and the TSS is weakly skewed or even antiskewed. Same for the upstream skew (but remember high antisense skew is expected to be anti-skewed... complicated.)
+
+Then for the TT signal, if the ratio is above 1, that means there is more signal at the TSS region proportional to the signal at the 3' CGI region. Below 1 is vice versa. Farther from 1 is a bigger difference, of course.
+
+So a couple ways I can do this, the correlation plots and box plots by group. Both could be useful.
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "notime") |>
+  ggplot( aes( x = TSS_ov_CGI3_skew, y = TSS_ov_CGI3_TT, color = simple_skew_class )) +
+      geom_point() +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed")
+geom
+```
+Okay, fair, that really doesn't show a correlation, just a blob. Of course the difference could be small, but even still... Need to represent with log anyway to split evenly around 1. Check the timepoint ones in case it's a timepoint-only effect, but I would feel cheated if someone tried to claim this showed a relationship in a paper.
+
+
+Yeah, there might be some models that show a correlation, but overall I really don't think there is much. Bit of a density problem here though, how to resolve that?
+
+geom bin 2d 
+```{r}
+library(ggpubr)
+geom <- fully_labeled_test |> 
+  filter( timepoint == "notime") |>
+  ggplot( aes( x = TSS_ov_CGI3_skew, y = TSS_ov_CGI3_TT)) +
+      labs(title = "Non-synced TT-seq" ) +
+      xlab("TSS - CGI3' skew") +
+      ylab("TSS/CGI3' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+Huh, okay, there is a little bit of a correlation for proximal skewed genes for 'higher skew dif leads to higher TSS/CGI3 signal. Probably not significant though. Still I'll run this for the others just in case.
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min10") |>
+  ggplot( aes( x = TSS_ov_CGI3_skew, y = TSS_ov_CGI3_TT)) +
+      labs(title = "10 Minutes Post-DRB TT-seq" ) +
+      xlab("TSS - CGI3' skew") +
+      ylab("TSS/CGI3' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted")  +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min20") |>
+  ggplot( aes( x = TSS_ov_CGI3_skew, y = TSS_ov_CGI3_TT)) +
+      labs(title = "20 Minutes Post-DRB TT-seq" ) +
+      xlab("TSS - CGI3' skew") +
+      ylab("TSS/CGI3' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min30") |>
+  ggplot( aes( x = TSS_ov_CGI3_skew, y = TSS_ov_CGI3_TT)) +   
+      labs(title = "30 Minutes Post-DRB TT-seq" ) +
+      xlab("TSS - CGI3' skew") +
+      ylab("TSS/CGI3' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min40") |>
+  ggplot( aes( x = TSS_ov_CGI3_skew, y = TSS_ov_CGI3_TT)) +
+      labs(title = "40 Minutes Post-DRB TT-seq" ) +
+      xlab("TSS - CGI3' skew") +
+      ylab("TSS/CGI3' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+
+Okay, maybe there's a little bit of a correlation, and that's interesting... What about on the other strand?
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "notime") |>
+  ggplot( aes( x = TSS_ov_CGI5_skew, y = TSS_ov_CGI5_TT)) +
+      labs(title = "Non-synced TT-seq, antisense" ) +
+      xlab("TSS - CGI5' skew") +
+      ylab("TSS/CGI5' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min10") |>
+  ggplot( aes( x = TSS_ov_CGI5_skew, y = TSS_ov_CGI5_TT)) +
+      labs(title = "10 Minutes Post-DRB TT-seq, antisense" ) +
+      xlab("TSS - CGI5' skew") +
+      ylab("TSS/CGI5' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min20") |>
+  ggplot( aes( x = TSS_ov_CGI5_skew, y = TSS_ov_CGI5_TT)) +
+      labs(title = "20 Minutes Post-DRB TT-seq, antisense" ) +
+      xlab("TSS - CGI5' skew") +
+      ylab("TSS/CGI5' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min30") |>
+  ggplot( aes( x = TSS_ov_CGI5_skew, y = TSS_ov_CGI5_TT)) +
+      labs(title = "30 Minutes Post-DRB TT-seq, antisense" ) +
+      xlab("TSS - CGI5' skew") +
+      ylab("TSS/CGI5' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  filter( timepoint == "min40") |>
+  ggplot( aes( x = TSS_ov_CGI5_skew, y = TSS_ov_CGI5_TT)) +
+      labs(title = "40 Minutes Post-DRB TT-seq, antisense" ) +
+      xlab("TSS - CGI5' skew") +
+      ylab("TSS/CGI5' TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~")), color = "red", geom = "label")
+geom
+```
+I wonder if that's meaningful. Distal and proximal behaved slightly dif from each other at the first timepoint, but not at the rest. For all antisense graphs, higher TSS TTseq vs CGI5 TTseq is also slightly negatively correlated with TSS/CGI5 POSITIVE skew (which means it's positively correlated with the TSS/CGI5 skew ratio that would be sense for it.) Little surprised at how much of the TTseq signal is over the 1 line since it's often visually shifted downstream in the graphs (unless I'm dumb and already accounted for region length in my script and therefore divide by 2 was unnecessary? Entirely possible.)
+
+obviously this one won't really show anything, it's proof of concept
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSS_ov_CGI3_skew, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      mytheme
+geom
+```
+Suprise suprise, prox has a higher TSS/CGI 3 skew than dist does, and it doesn't change by timepoint. 
+
+```{r}
+geom <- fully_labeled_test |> filter(timepoint == "notime") |> 
+  ggplot( aes( y = CGI5_skew, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      mytheme
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> filter(timepoint == "notime") |> 
+  ggplot( aes( y = TES_skew, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      mytheme
+geom
+```
+Also not really a dif in TES skew. Okay, stop getting distracted.
+
+```{r}
+library(rstatix)
+```
+```{r}
+fully_labeled_test$TSSup_class=as.factor(fully_labeled_test$TSSup_class)
+fully_labeled_test$timepoint=as.factor(fully_labeled_test$timepoint)
+fully_labeled_test$simple_skew_class=as.factor(fully_labeled_test$simple_skew_class)
+```
+
+Also should split upstream antisense by skew too.
+```{r}
+fully_labeled_test$TSSup_class <- "NA"
+fully_labeled_test[fully_labeled_test$TSS_ov_CGI5_skew <= 0 ]$TSSup_class <- "Prox_up"
+fully_labeled_test[fully_labeled_test$TSS_ov_CGI5_skew > 0 ]$TSSup_class <- "Dist_up"
+```
+
+If TSS skew is 0.5 and upstream is -0.5, the dif would be 1. But remember, this is antisense, so that's really TSS -0.5 and upstream 0.5. So in this scenario, positive values are 'dist up', negative values are 'prox up'.
+
+Skew class
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(TSS_ov_CGI3_TT~simple_skew_class)
+krusk_test_1
+```
+
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(TSS_TT_score~simple_skew_class)
+krusk_test_1
+```
+
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(CpG3_TT_score~simple_skew_class)
+krusk_test_1
+```
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(CpG5_TT_score~simple_skew_class)
+krusk_test_1
+```
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(CpG3_TT_score~TSSup_class)
+krusk_test_1
+```
+
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(CpG5_TT_score~TSSup_class)
+krusk_test_1
+```
+
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(TSSup_TT_score~TSSup_class)
+krusk_test_1
+```
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(CGI3_skew~TSSup_class)
+krusk_test_1
+```
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(CGI5_skew~simple_skew_class)
+krusk_test_1
+```
+
+timepoint
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(TSS_ov_CGI3_TT~timepoint)
+krusk_test_1
+pwc <- fully_labeled_test %>% 
+  dunn_test(TSS_ov_CGI3_TT~timepoint, p.adjust.method = "bonferroni") 
+pwc <- pwc %>% add_xy_position(x = "timepoint")
+pwc
+```
+Upstream Skew class
+```{r}
+krusk_test_1 <- fully_labeled_test %>% kruskal_test(TSS_ov_CGI5_TT~TSSup_class)
+krusk_test_1
+pwc <- fully_labeled_test %>% 
+  dunn_test(TSS_ov_CGI3_TT~TSSup_class, p.adjust.method = "bonferroni") 
+pwc <- pwc %>% add_xy_position(x = "TSSup_class")
+pwc
+```
+I'm not actually sure which of these I'd put on the grpahs. have to think through that.
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSS_ov_CGI3_TT, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+so there is something. There is a higher TSS/CGI3 ratio in proximal genes. The TSS/CGI ratio also increases over time in the timecourse but drops in the non-timecourse (though that might just be dif due to a dif library prep method...)
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSS_ov_CGI5_TT, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+classes don't actually make sense for this one.
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSS_ov_CGI5_TT, x = timepoint)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+Okay, there is def something goign on with the sense that's interesting though! Test it stat wise? Dif in means or dif in distro?
+
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSS_ov_CGI5_TT, x = timepoint, color=TSSup_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+Upstream antisense TT signal isn't reversed the way antisense skew is. So overall, higher skew at the TSS vs the CGI edge correlates with a higher TSS over CGI edge signal.
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSS_TT_score, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = CpG3_TT_score, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = CpG5_TT_score, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+Oh, that's actually a bit interesting. The signal at the 5' edge is affected even if you ignore TSS signal and upstream edge skew (since upstream edge skew doesn't correlate with downstream class.)
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSSup_TT_score, x = timepoint, color=simple_skew_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSS_TT_score, x = timepoint, color=TSSup_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = CpG3_TT_score, x = timepoint, color=TSSup_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = CpG5_TT_score, x = timepoint, color=TSSup_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+```{r}
+geom <- fully_labeled_test |> 
+  ggplot( aes( y = TSSup_TT_score, x = timepoint, color=TSSup_class)) +
+      geom_violin() +
+      geom_boxplot() +
+      scale_y_log10(n.breaks=6, labels=scales::label_comma()) +
+      geom_hline(yintercept=1, linetype="dashed") +
+      mytheme
+geom
+```
+
+```{r}
+dim(fully_labeled_test |> filter(simple_skew_class=="Dist" & TSSup_class == "Dist_up") |> select(c(1)) |> distinct())
+dim(fully_labeled_test |> filter(simple_skew_class=="Prox" & TSSup_class == "Dist_up") |> select(c(1)) |> distinct())
+dim(fully_labeled_test |> filter(simple_skew_class=="Dist" & TSSup_class == "Prox_up") |> select(c(1)) |> distinct())
+dim(fully_labeled_test |> filter(simple_skew_class=="Prox" & TSSup_class == "Prox_up") |> select(c(1)) |> distinct())
+```

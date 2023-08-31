@@ -1,0 +1,566 @@
+---
+title: "A couple more direct comparisons."
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library( tidyverse )
+```
+
+```{r}
+tab <- fread("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/Polenkowski_Timecourse_TTseq/TTseq_timecourse_scalednstranded.txt.gz")
+```
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+```
+
+```{r}
+tab[, max1:= do.call(pmax, .SD), , .SDcols = c(28:427)]
+tab[, maxScore:= max(max1), uniq_id]
+tab = tab[maxScore != 0]
+tab[,c(28:427)] <- tab[, lapply(.SD, '/', maxScore), , .SDcols = c(28:427)]
+```
+
+#and 7
+
+```{r}
+len250  <- tab[ TSS_3prime <= 250 ]
+len500  <- tab[ TSS_3prime <= 500 & TSS_3prime > 250 ]
+len750  <- tab[ TSS_3prime <= 750 & TSS_3prime > 500 ]
+len1000  <- tab[ TSS_3prime <= 1000 & TSS_3prime > 750 ]
+len1250  <- tab[ TSS_3prime <= 1250 & TSS_3prime > 1000 ]
+len1500 <- tab[ TSS_3prime <= 1500 & TSS_3prime > 1250 ]
+lenbig <- tab[ TSS_3prime  > 1500 ]
+```
+
+```{r}
+length(unique(len250$uniq_id))
+length(unique(len500$uniq_id))
+length(unique(len750$uniq_id))
+length(unique(len1000$uniq_id))
+length(unique(len1250$uniq_id))
+length(unique(len1500$uniq_id))
+length(unique(lenbig$uniq_id))
+```
+
+```{r}
+lenlist <- list( len250, len500, len750, len1000, len1250, len1500, lenbig )
+
+nlist <- list( 1:7 )
+
+for ( per in seq_along( lenlist ) ) {
+    tmptab <- lenlist[[per]][, c( 21, 22, 28:429, 431 ) ] 
+    sum_tab <- tmptab[, lapply(.SD, mean), by = list(loc, condition, timepoint, senseanti, simple_skew_class )]
+    nlist[[per]] <- melt( sum_tab, na.rm = TRUE, id.vars = c( "loc", "condition", "timepoint", "senseanti", "simple_skew_class" ) )
+}
+
+rm( lenlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "len250"
+nlist[[2]]$perc <- "len500"
+nlist[[3]]$perc <- "len750"
+nlist[[4]]$perc <- "len1000"
+nlist[[5]]$perc <- "len1250"
+nlist[[6]]$perc <- "len1500"
+nlist[[7]]$perc <- "lenbig"
+
+len_fixed_7_ds <- do.call( rbind, nlist )
+```
+
+```{r}
+len_fixed_7_ds$Bins <- (as.numeric( len_fixed_7_ds$variable )  - 100) * 10
+len_fixed_7_ds[loc == "CGI5"]$Bins <- len_fixed_7_ds[loc == "CGI5"]$Bins - 2000
+len_fixed_7_ds$mean_score <- len_fixed_7_ds$value
+```
+
+###################################################
+
+Okay, let's do sense, 10 minutes, len500, include both prox and dist + sense and AS but due to scale diff with THOC5ko put that on a separate graph.
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len500" & timepoint == "min10") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_10_min_ctrl_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+20 min
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len500" & timepoint == "min20") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_20_min_ctrl_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len500" & timepoint == "min30") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_30_min_ctrl_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len500" & timepoint == "min40") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_40_min_ctrl_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+
+
+
+
+######################
+thoc5ko
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len500" & timepoint == "min10") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_10_min_thoc5ko_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+20 min
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len500" & timepoint == "min20") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_20_min_thoc5ko_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len500" & timepoint == "min30") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_30_min_thoc5ko_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len500" & timepoint == "min40") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_40_min_thoc5ko_250_500_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+
+###########################
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len750" & timepoint == "min10") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_10_min_ctrl_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+20 min
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len750" & timepoint == "min20") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_20_min_ctrl_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len750" & timepoint == "min30") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_30_min_ctrl_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len750" & timepoint == "min40") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_40_min_ctrl_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+################
+thoc5ko
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len750" & timepoint == "min10") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_10_min_thoc5ko_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+20 min
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len750" & timepoint == "min20") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_20_min_thoc5ko_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len750" & timepoint == "min30") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_30_min_thoc5ko_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len750" & timepoint == "min40") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_40_min_thoc5ko_500_750_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+####################
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len1000" & timepoint == "min10") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_10_min_ctrl_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+20 min
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len1000" & timepoint == "min20") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_20_min_ctrl_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len1000" & timepoint == "min30") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_30_min_ctrl_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "ctrl" & perc == "len1000" & timepoint == "min40") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_40_min_ctrl_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+
+
+
+
+######################
+thoc5ko
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len1000" & timepoint == "min10") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_10_min_thoc5ko_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+20 min
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len1000" & timepoint == "min20") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_20_min_thoc5ko_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len1000" & timepoint == "min30") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_30_min_thoc5ko_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "TSS" & condition == "thoc5ko" & perc == "len1000" & timepoint == "min40") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_40_min_thoc5ko_750_1000_len") +
+      xlab(label="Distance from TSS (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black")+
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+Since most of the upstream edges are within ~600 bp, for the upstream fixed let's just do 250, 500, 750, 1000, and 1000+.
+
+```{r}
+len250  <- tab[ prime5_TSS <= 250 ]
+len500  <- tab[ prime5_TSS <= 500 & prime5_TSS > 250 ]
+len750  <- tab[ prime5_TSS <= 750 & prime5_TSS > 500 ]
+len1000  <- tab[ prime5_TSS <= 1000 & prime5_TSS > 750 ]
+lenbig <- tab[ prime5_TSS  > 1000 ]
+```
+
+```{r}
+lenlist <- list( len250, len500, len750, len1000, lenbig )
+
+nlist <- list( 1:5 )
+
+for ( per in seq_along( lenlist ) ) {
+    tmptab <- lenlist[[per]][, c( 21, 22, 28:429, 431 ) ] 
+    sum_tab <- tmptab[, lapply(.SD, mean), by = list(loc, condition, timepoint, senseanti, simple_skew_class )]
+    nlist[[per]] <- melt( sum_tab, na.rm = TRUE, id.vars = c( "loc", "condition", "timepoint", "senseanti", "simple_skew_class" ) )
+}
+
+rm( lenlist )
+```
+
+```{r}
+nlist[[1]]$perc <- "len250"
+nlist[[2]]$perc <- "len500"
+nlist[[3]]$perc <- "len750"
+nlist[[4]]$perc <- "len1000"
+nlist[[5]]$perc <- "lenlong"
+
+len_fixed_5_us <- do.call( rbind, nlist )
+```
+
+```{r}
+len_fixed_5_us$Bins <- (as.numeric( len_fixed_5_us$variable )  - 100) * 10
+len_fixed_5_us[loc == "CGI5"]$Bins <- len_fixed_5_us[loc == "CGI5"]$Bins - 2000
+len_fixed_5_us$mean_score <- len_fixed_5_us$value
+```
+
+```{r}
+geom <- len_fixed_5_us |> 
+  filter( loc == "TSS" & senseanti == "antisense" & simple_skew_class == "Dist" & condition == "thoc5ko") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_thoc5ko_dist") +
+      xlab(label="Distance from TSS (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 100, by=100), limits=c(-1000, 100))
+geom
+```
+
+CGI edge?
+```{r}
+geom <- len_fixed_7_ds |> 
+  filter( loc == "CGI3" & condition == "ctrl" & perc == "len500" & timepoint == "min10") |>
+  ggplot( aes( x = Bins, y = mean_score, color = simple_skew_class, linetype = senseanti )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_10_min_ctrl_250_500_len") +
+      xlab(label="Distance from CGI3 (BP)") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = 600, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 1250, by=100), limits=c(-1000, 1250))
+geom
+```
+
+I don't see as much of a defined peak, to be honest. Maybe 600/2 to be equivalent to TSS region.
+
+```{r}
+geom <- len_fixed_5_us |> 
+  filter( loc == "CGI5" & senseanti == "antisense" & simple_skew_class == "Dist" & condition == "thoc5ko") |>
+  ggplot( aes( x = Bins, y = mean_score, color = perc )) +
+      geom_line() +
+      mytheme +
+      ggtitle(label="tss_ttseq_antisense_thoc5ko_dist") +
+      xlab(label="Distance from CGI5 (BP)") +
+  facet_wrap(~timepoint) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = 300, linetype = "dashed", color = "Black") +
+    geom_vline(xintercept = -300, linetype = "dashed", color = "Black") +
+  scale_x_continuous( breaks=seq(-1000, 100, by=100), limits=c(-1000, 100))
+geom
+```
+Okay, the -300 seems okay for the CGI edge situation though.
+
+
+idea that's probably a bad one... If treated independently, what is the 100 bp skew maxima region in the first couple kb of each gene? Is that a better predictor of TT-seq maxima than CGI edge is?
+
+

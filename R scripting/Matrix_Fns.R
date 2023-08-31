@@ -83,7 +83,7 @@ bam_revcomp <- function( bam, debug = FALSE, revcomp = FALSE, ... ) {
   }
 }
 
-bam_vars <- function( bam, pairedEnd = FALSE, rnorm = TRUE, debug = FALSE, ... ) {
+bam_vars <- function( bam = bam, pairedEnd = FALSE, rnorm = TRUE, debug = FALSE, ... ) {
   bam_info <- if( pairedEnd ) BamFile( bam, asMates = TRUE ) else BamFile( bam )
   si <- seqinfo( bam_info )
   readcounts <- if ( rnorm ) readcounts( bam = bam_info, pairedEnd, debug ) else 1e6 #as normalization is RPM, this is a scaling factor of 1.
@@ -115,7 +115,7 @@ bw_olaps <- function( gr, bw_sub, ignorestrand = FALSE, debug = FALSE, len_adj =
 }
 
 bam_olaps <- function( gr, bam_sub, long_hist, ignorestrand = FALSE, debug = FALSE, len_adj = TRUE, ... ){
-  olap <- as.numeric(countOverlaps( gr, bam_sub, ignore.strand = ignorestrand))
+  olap <- as.numeric(countOverlaps( query = gr, subject = bam_sub, ignore.strand = ignorestrand))
   if ( debug ) print( head( olap ) )
   if ( debug ) print( tail( olap ) )
   long_hist$value <- olap
@@ -182,8 +182,8 @@ score_matrix <- function( bed, readsource, bam_or_bw, method, debug = FALSE, ...
     print( paste0( "Filetype is", bam_or_bw ))
     print( paste0( "Method is ", method ) )
   }
-  if ( bam_or_bw == "bam" )  { 
-    bv <- bam_vars( readsource, ... )
+  if ( bam_or_bw == "bam" )  { #if bam, get readcounts for normalization
+    bv <- bam_vars( bam = readsource, ... )
     readcounts <- 1e6 / bv[[3]]
   } else {
       bv = NA
@@ -264,7 +264,7 @@ single_chrom_mat <- function(
           )
         )
         if ( pairedEnd == TRUE & readsOnly == FALSE ) {
-          bam_aln <- GRanges( readGAlignmentPairs( bam, param = sbp ) ) 
+          bam_sub <- GRanges( readGAlignmentPairs( bv$bam_info, param = sbp ) ) 
           #using pairs and coercing to GRanges is necessary if you want to keep the insert.
           if ( debug ) print( "getting bam pe" )
         } else {
@@ -272,8 +272,8 @@ single_chrom_mat <- function(
           bam_sub <- GRanges( readGAlignments( bv$bam_info, param = sbp ) )
         }
         if ( debug ) print( head( bam_sub ) )
-        bam_sub <- bam_revcomp( bam_sub, debug, ... )
-        bam_sub <- sbp_from_bam( bam_sub, ... )
+        bam_sub <- bam_revcomp( bam = bam_sub, debug = debug, ... )
+        bam_sub <- sbp_from_bam( bam = bam_sub, debug = debug, ... )
       }
       gr <- GRanges( 
         seqnames = chr,
@@ -282,7 +282,7 @@ single_chrom_mat <- function(
       )
     gr$ID <-  long_hist[[1]]
     gr$BI <- long_hist[[2]]
-    if (bam_or_bw == "bam") { tmp_mat <- bam_olaps( gr, bam_sub, ignorestrand = ignorestrand, long_hist = long_hist, debug = debug, bs = bs, ... ) }
+    if (bam_or_bw == "bam") { tmp_mat <- bam_olaps( gr = gr, bam_sub = bam_sub, ignorestrand = ignorestrand, long_hist = long_hist, debug = debug, bs = bs, ... ) }
     if (bam_or_bw == "bw") { tmp_mat <- bw_olaps( gr, bw_sub = bw_sub, ignorestrand = ignorestrand, debug = debug, bs = bs, ... ) }
     return( list( "region" = bed_sub, "scores" = tmp_mat ) )
   }
