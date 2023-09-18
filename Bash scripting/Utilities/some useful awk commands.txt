@@ -1,7 +1,7 @@
 USEFUL AWK COMMANDS
 awk 'max<$4 || NR==1 {max=$4; data=$0} END{print data}' inputFile #finds the maximum value in field
 #4 of inputFile and prints the row associated with that maximum value
-awk '{if ($1 == $4) {print $0}}' inputFile outputFile #filters for field 1 matching field 4, print full row to output if true.
+awk '{if ($1 = $4) {print $0}}' inputFile > outputFile #filters for field 1 matching field 4, print full row to output if true.
 
 awk -f/t '{arr[$KEYFIELD]++} END{for (a in arr) print a, arr[a]}' #that would group by the key field and get the count of number of occurences of the things in the key field. So if I wanted to get the number of occurences of a unique gene id this is how I would do it. Now, to get the max in a different column based on this, then print the row that corresponds to each max... ooph that's gonna be more difficult than I think. Modification to sum ages instead of counting records someone recommended: +=$2 instead of ++. So... a max 4 in that section might work?
 
