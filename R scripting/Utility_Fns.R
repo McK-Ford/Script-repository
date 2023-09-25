@@ -40,5 +40,5 @@ invert_list <- function( LoL ) {
 
 write_genetsv <- function(tab, name, coln = FALSE){
   write.table(tab, name, quote=FALSE,
-  row.names=FALSE, col.names=coln, sep = "\t")
+  row.names=FALSE, col.names=coln, sep = "\t", eol="\n")
 }
