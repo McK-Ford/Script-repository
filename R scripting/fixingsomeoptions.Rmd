@@ -1,0 +1,18 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+source("Script repository/R scripting/Utility_Fns.R") #new 9/25 commit to make sure line endings always correct
+scored_genes_with_TA <- read.delim("C:/Users/kayle/Box/Vertinolab/McKayla Ford/Projects/R-loops_Pausing/Sequence_based_analysis/Classing_by_Skew/scored_genes_with_TA.bed")
+```
+
+```{r}
+options(scipen = 20)
+```
+
+```{r}
+write_genetsv(scored_genes_with_TA, "scored_genes_with_TA.bed")
+```
+

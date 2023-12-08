@@ -1,0 +1,187 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Getting nums
+```{r}
+tab <- read.delim("~/scored_genes_with_TA.bed")
+```
+
+```{r}
+library(tidyverse)
+```
+
+Now the thing is that almost no AT could still be quite skewed because the less AT there is the less it would take to make it skewed. I didn't worry about this for GC because I was working on high GC percent regions, but it may be a good idea when taking AT skew in consideration to account for AT content. What I'm thinking I will do is add additional columns which are GC skew multiplied by GC percentage, and AT skew multiplied by AT percentage. All percentages should be positive so it won't screw with the sign of the skew, just it'll move skew that is defined by less bases towards 0 compared to skew defined by more bases, resulting in less of a 'swingy' result that I think I can be more confident in making conclusions off of.
+
+```{r}
+tab$TSS_GC_skew_PERCNORM  <- tab$TSS_GC_skew  * tab$TSS_GC_perc
+tab$CGI3_GC_skew_PERCNORM <- tab$CGI3_GC_skew * tab$CGI3_GC_perc
+tab$TES_GC_skew_PERCNORM  <- tab$TES_GC_skew  * tab$TES_GC_perc
+tab$CGI5_GC_skew_PERCNORM <- tab$CGI5_GC_skew * tab$CGI5_GC_perc
+tab$x2in_GC_skew_PERCNORM <- tab$x2in_GC_skew * tab$x2in_GC_perc
+
+tab$TSS_TA_skew_PERCNORM  <- tab$TSS_TA_skew  * ( 1 - tab$TSS_GC_perc )
+tab$CGI3_TA_skew_PERCNORM <- tab$CGI3_TA_skew * ( 1 - tab$CGI3_GC_perc )
+tab$TES_TA_skew_PERCNORM  <- tab$TES_TA_skew  * ( 1 - tab$TES_GC_perc )
+tab$CGI5_TA_skew_PERCNORM <- tab$CGI5_TA_skew * ( 1 - tab$CGI5_GC_perc )
+tab$x2in_TA_skew_PERCNORM <- tab$x2in_TA_skew * ( 1 - tab$x2in_GC_perc )
+```
+
+Okay lets examine this some
+### TSS
+
+```{r}
+summary(tab$TSS_GC_skew)
+summary(tab$TSS_GC_perc)
+summary(tab$TSS_GC_skew_PERCNORM)
+
+summary(tab$TSS_TA_skew)
+summary(tab$TSS_TA_skew_PERCNORM)
+```
+Yeah, kinda what I thought would happen, the most extreme are squished towards the median. I can't see a clear lean to the TA skew data, fairly neutral at the TSS, with the GC skew data having a small bias towards higher levels of G than C at the TSS.
+
+### CGI3'
+
+```{r}
+summary(tab$CGI3_GC_skew)
+summary(tab$CGI3_GC_perc)
+summary(tab$CGI3_GC_skew_PERCNORM)
+
+summary(tab$CGI3_TA_skew)
+summary(tab$CGI3_TA_skew_PERCNORM)
+```
+The 3' edge is more strongly G skewed and T skewed in the positive direction...
+```{r}
+summary(tab$TES_GC_skew)
+summary(tab$TES_GC_perc)
+summary(tab$TES_GC_skew_PERCNORM)
+
+summary(tab$TES_TA_skew)
+summary(tab$TES_TA_skew_PERCNORM)
+```
+TES leans T in the positive direction, with almost no lean G.
+```{r}
+summary(tab$CGI5_GC_skew)
+summary(tab$CGI5_GC_perc)
+summary(tab$CGI5_GC_skew_PERCNORM)
+
+summary(tab$CGI5_TA_skew)
+summary(tab$CGI5_TA_skew_PERCNORM)
+```
+There is a small C lean and a medium A lean at the upstream edge (G and T for that direction's sense tx.)
+```{r}
+summary(tab$x2in_GC_skew)
+summary(tab$x2in_GC_perc)
+summary(tab$x2in_GC_skew_PERCNORM)
+
+summary(tab$x2in_TA_skew)
+summary(tab$x2in_TA_skew_PERCNORM)
+```
+There is a very strong G lean and no AT lean at the first X2in transition.
+
+```{r}
+mytheme <- theme(
+  panel.background = element_rect( fill = "white" ),
+  text = element_text( color = "black", face = "bold", family = "sans" ),
+  axis.text = element_text( color = "black" ),
+  axis.ticks = element_line( color = "black" ),
+  plot.margin = unit( c( 0.25, 0.25, 0.25, 0.25 ), "cm" ),
+  plot.title = element_text( vjust = 2 ),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.title.y = element_text( vjust = 0 ),
+  axis.title.x = element_text( vjust = 0 ),
+  panel.border = element_blank(),
+  axis.line = element_line()
+)
+library(ggpubr)
+```
+
+```{r}
+geom <- tab |> 
+  ggplot( aes( x = TSS_GC_skew_PERCNORM, y = TSS_TA_skew_PERCNORM)) +
+      labs(title = "GC vs TA skew at TSS" ) +
+      xlab("GC skew") +
+      ylab("TA TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      geom_hline(yintercept=0, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted", color = "red", linewidth = 2) +
+  stat_cor(aes(label = after_stat(paste(rr.label, p.label, sep = "~"))), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- tab |> 
+  ggplot( aes( x = CGI3_GC_skew_PERCNORM, y = CGI3_TA_skew_PERCNORM)) +
+      labs(title = "GC vs TA skew at CGI3" ) +
+      xlab("GC skew") +
+      ylab("TA TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      geom_hline(yintercept=0, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted", color = "red", linewidth = 2) +
+  stat_cor(aes(label = after_stat(paste(rr.label, p.label, sep = "~"))), color = "red", geom = "label")
+geom
+```
+
+
+```{r}
+geom <- tab |> 
+  ggplot( aes( x = TES_GC_skew_PERCNORM, y = TES_TA_skew_PERCNORM)) +
+      labs(title = "GC vs TA skew at TES" ) +
+      xlab("GC skew") +
+      ylab("TA TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      geom_hline(yintercept=0, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted", color = "red", linewidth = 2) +
+  stat_cor(aes(label = after_stat(paste(rr.label, p.label, sep = "~"))), color = "red", geom = "label")
+geom
+```
+
+
+```{r}
+geom <- tab |> 
+  ggplot( aes( x = CGI5_GC_skew_PERCNORM, y = CGI5_TA_skew_PERCNORM)) +
+      labs(title = "GC vs TA skew at CGI5" ) +
+      xlab("GC skew") +
+      ylab("TA TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      geom_hline(yintercept=0, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted", color = "red", linewidth = 2) +
+  stat_cor(aes(label = after_stat(paste(rr.label, p.label, sep = "~"))), color = "red", geom = "label")
+geom
+```
+
+```{r}
+geom <- tab |> 
+  ggplot( aes( x = x2in_GC_skew_PERCNORM, y = x2in_TA_skew_PERCNORM)) +
+      labs(title = "GC vs TA skew at x2in" ) +
+      xlab("GC skew") +
+      ylab("TA TTseq") +
+      geom_bin_2d(bins=100) +
+      mytheme +
+      geom_hline(yintercept=0, linetype="dashed") +
+      geom_vline(xintercept=0, linetype="dashed") +
+      geom_smooth(method=lm, se=FALSE, linetype="dotted", color = "red", linewidth = 2) +
+  stat_cor(aes(label = after_stat(paste(rr.label, p.label, sep = "~"))), color = "red", geom = "label")
+geom
+```
+
+Huh. So, at all sites, G/C is negatively correlated with T/A, which means G co-occurs with A and T co-occurs with C, which is the opposite of what I expected to be completely honest. Unless... Am I absolutely sure I did T/A and not A/T?
+
+Nope, just double-checked and they aren't reversed in any way.
+
+
+
+
+
+
+

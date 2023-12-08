@@ -14,4 +14,9 @@ awk '{if (10=="+") {print $0}}' works fine... arrow goes like so > so I didn't d
 
 awk arrays are key value pairs. unstructured and invisible, technically has no order and is not sorted unless you tell it to be sorted.
 
+awk 'FNR==NR {a[$NF]; next} $NF in a' other main print the lines from main that were in other
+
+Two file complicated thing:
+awk '{if ($NF == "TRUE") {print}}' file1 | awk 'FNR=NR {a[$1]; next} $4 in a' - file2 > nfile
+Takes file1 and says, if the last column == TRUE, then carry this over into stdout. Pipe this into the next commpand with | and - , as awk uses - to represent stdout. Then build an array going line by line through stdout grabbing the first column. Finally, check to see if column 4 from file2 is present in the array a, and if so, print it to the output file nfile.
 https://www.datafix.com.au/cookbook/tables2.html#1
