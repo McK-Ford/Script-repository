@@ -1,0 +1,71 @@
+---
+title: "Sesame methylation mapping"
+output: html_notebook
+---
+
+```{r}
+library("sesame")
+```
+https://www.bioconductor.org/packages/release/bioc/vignettes/sesame/inst/doc/sesame.html
+Okay. let's try their built in pipeline setup, then revise if it seems I need to tweak something they won't let me do in the overarching function.
+
+```{r}
+idat_dir <-  system.file("C:/Users/kayle/Box/Vertinolab/1Emory_Vertinolab/Illumina_Infinium_Methylation_Analyses/MCF7 MB231 DAC DOT1L EPIC ARRAYS PVE11277/", package = "sesameData")
+```
+
+func options get beta values or get AFs, if nul then return SigDF list (the tool for further analysis)
+```{r}
+betas <- openSesame(idat_dir, BPPARAM = BiocParallel::MulticoreParam(2))
+```
+Okay, I see their breakdown in the manual, but what exactly is the problem?
+With readIDATpair, "the function takes a prefix string that is shared with _Grn.idat and _Red.idat, then returns a SigDF. I see. I have _grn and _red with matching strings but maybe it's confused because there's multiple in one directory?
+
+Does it function better if we break the function down into its constituent parts? There's options if I do that for a design manifest too which may help.
+```{r}
+betas <- do.call(
+  cbind,
+  BiocParallel::bplapply(
+    searchIDATprefixes(idat_dir),
+    function(pfx) {
+      getBetas(prepSesame(
+        readIDATpair(pfx), prep = "QCDPB"
+        )
+        )
+        },
+    BPPARM = BiocParallel::MulticoreParam(2)
+    )
+  )
+```
+Dir does not exist? It's not a typo...
+
+Wait, I'm an idiot. I think I somehow got confused by their package data loading tool when what I should have done is:
+```{r}
+idat_dir <- "C:/Users/kayle/Box/Vertinolab/1Emory_Vertinolab/Illumina_Infinium_Methylation_Analyses/MCF7 MB231 DAC DOT1L EPIC ARRAYS PVE11277/"
+```
+then
+```{r}
+betas <- openSesame(idat_dir, BPPARAM = BiocParallel::MulticoreParam(2))
+```
+
+Okay, parallel can't work the way they want in windows, go back and implement properly later, for now just go single threaded and see if the cache is still a problem because I did try caching the data already.
+```{r}
+betas <- openSesame(idat_dir)
+```
+
+```{r}
+library(ExperimentHub)
+sesameDataCache()
+```
+FFS.
+Okay, I think I found some relevant info. Just check first:
+```{r}
+packageVersion("ExperimentHub")
+packageVersion("BiocFileCache")
+packageVersion("dbplyr")
+```
+Yeah, I see.
+https://stackoverflow.com/questions/77370659/error-failed-to-collect-lazy-table-caused-by-error-in-db-collect-using
+https://github.com/Bioconductor/BiocFileCache/pull/50
+https://github.com/zwdzwd/sesame/issues/120
+
+So dbplyr updated, broke a lot of things (including biomart and stuff too- this is worth forwarding to the others, I think.)

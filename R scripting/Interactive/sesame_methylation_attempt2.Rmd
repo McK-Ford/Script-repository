@@ -1,0 +1,190 @@
+---
+title: "Sesame methylation mapping"
+output: html_notebook
+---
+
+```{r}
+library("sesame")
+```
+Attempt 2
+```{r eval=FALSE, include=FALSE}
+ sesameDataCache()
+```
+Ran it in the console but included it here for reference. Was successful this time, yay!
+```{r}
+idat_dir <- "C:/Users/kayle/Box/Vertinolab/1Emory_Vertinolab/Illumina_Infinium_Methylation_Analyses/MCF7 MB231 DAC DOT1L EPIC ARRAYS PVE11277/"
+```
+
+https://www.bioconductor.org/packages/release/bioc/vignettes/sesame/inst/doc/sesame.html
+Okay. let's try their built in pipeline setup, then revise if it seems I need to tweak something they won't let me do in the overarching function.
+
+```{r}
+idat_dir <-  system.file("C:/Users/kayle/Box/Vertinolab/1Emory_Vertinolab/Illumina_Infinium_Methylation_Analyses/MCF7 MB231 DAC DOT1L EPIC ARRAYS PVE11277/", package = "sesameData")
+```
+
+func options get beta values or get AFs, if nul then return SigDF list (the tool for further analysis)
+```{r}
+betas <- openSesame(idat_dir)
+```
+Victory!
+I used the default which returns beta values in a matrix - looks like said matrix is cgs for rows and samples for columns. Looks like it'll happily read in samples so long as you have matching prefixes mapped to the red green files in the same source directory. But looks like you can alter the arg here to return allele frequencies for snp probes, or the actual sigDF objects. There is also a manifest option if you want to handle array data from a platform not handled natively (like what? this seems to support both epic and the 450K, I'm not familiar enough with methylation arrays to know of ones not supported.) You can also grab detection p-values ala poohbah.
+Preprocessing prep defaults to QCDPB, which is dye bias correction followed by background correction for human EPICv2/EPIC/HM450 data. There are also codes for the non-human versions of the epic arrays, the MM285 mouse and non-mouse arrays, and the mammal40 human and nonhuman arrays. But here we can stick with the default.
+
+dye bias: red channel typically reads as higher intensity than green channel. 
+**** read the supplemental vignette on special preprocessing, among other options, TUMOR CELLS can require special preprocessing due to global loss of methylation. *****
+
+Oh, I think I see! So they have the sample codes later in the doc, QCDPB is literally chaining together those single letter codes. Start by masking poorly designed probes (probably the ones in the illumina redacted list?) then infer the channel for infinium-I probes (the ones where there's one prober per channel), then perform a non-linear correction for dye bias (see vignette for details on that), then do detection p-value masking with pOOBAH (v. traditional methylation p-value method), then finally do background subtraction using oob (again, very traditional well-established method). I think background subtraction here is to compensate for intrinsic chip or DNA fluoro but i'm not sure.
+
+QC metrics? We trun off preprocessing for this for obv reasons
+```{r}
+qcs <- openSesame(idat_dir, prep="", func=sesameQC_calcStats)
+```
+you can specify specific parts of the qc set with commands like funs="detection" but I found the 4 samples on the 850K took my computer only a few seconds (home computer, 16gb ram, intel 12th gen 6core cpu) so odds are we don't need to be stingy with calcs on this.
+```{r}
+qcs
+```
+
+oh based on what they say there are cleaner ways to look at this though.
+so if i wanted to retrieve only one val
+```{r}
+sesameQC_getStats(qcs[[1]], "frac_dt")
+```
+
+we can also get it into a data table object which should be much easier to parse visually than the current list. 
+```{r}
+do.call(rbind, lapply(qcs, as.data.frame))
+```
+dt = detection, basically most probes were successfully detected across the board, which is what the people from sesame call the most important QC metric. You can rank it against the public datasets, and you can make QC plots:
+```{r}
+sesameQC_plotBar(qcs)
+#sesameQC_plotRedGrnQQ(qcs)
+#sesameQC_plotIntensVsBetas(qcs)
+#sesameQC_plotHeatSNPs(qcs)
+```
+Okay need to read the vignette and mess about with that some. had to comment several as the qcs list was the wrong data type.
+
+By default, does NOT quantile normalize to correct for probe type I vs II, due to concerns about the erasure of real signal.
+
+
+Looks like while there's included modeling stuff there isn't included plotting stuff, so, back to ggplot it is. X axis beta value, y axis density, split 4 ways - yeah, that should be easy.
+
+```{r}
+source("C://Users/kayle/Documents/Script repository/R scripting/Graphing_Functions.R")
+#for my clean theme + tidyverse
+```
+#lets try default gaussian kernal first then biweight?
+add colnames first though, will make this easier to work with
+```{r}
+colnames(betas) <- c("mock1", "dac1", "dac2", "mock2")
+betasdf <- as.data.frame(betas)
+```
+
+```{r}
+ggplot( data = betasdf ) + geom_density( aes(x = mock1) )
+```
+yeah its gonna autoremove na, need to figure out how I want to handle those
+```{r}
+tallbetasdf <- betasdf |> pivot_longer(cols = c(1:4), names_to = c("samp_id"), values_to = "betasc")
+```
+
+proper now
+```{r}
+ggplot( data = tallbetasdf ) + geom_density( aes(x = betasc, color = samp_id) ) + mytheme
+```
+need to redo some labels and colors to match but otherwise it agrees that dac = higher methylation which is good since that's what it should say.
+
+okay, how to retrieve what features they're associated with?
+10k max dist for association is default, start with that then tweak as desired
+```{r}
+enrichls <- testEnrichment( query, KYCG_buildGeneDBs(query, max_distance = 10000))
+```
+https://www.bioconductor.org/packages/release/bioc/vignettes/sesame/inst/doc/KYCG.html
+
+Except of course it doesn't work. Can never be that easy, right?
+```{r}
+genes <- sesameData_getGenesByProbes(query, platform="EPIC")
+```
+Alright, check the source
+function (Probe_IDs, platform = NULL, genome = NULL, max_distance = 10000) 
+{
+  if (is.null(platform)) {
+    platform <- inferPlatformFromProbeIDs(Probe_IDs)
+  }
+  genes <- sesameData_txnToGeneGRanges(sesameData_getTxnGRanges(sesameData_check_genome(genome, 
+    platform)))
+  probes <- sesameData_getManifestGRanges(platform, genome = genome)
+  probes <- probes[names(probes) %in% Probe_IDs]
+  subsetByOverlaps(genes, probes + max_distance)
+}
+
+```{r}
+platform <- inferPlatformFromProbeIDs(query)
+```
+So it's an error from the very beginning retrieving an indistinct query. I just want all the hg38 epic genes though, not a specific one.
+What about this part?
+```{r}
+  genes <- sesameData_txnToGeneGRanges(sesameData_getTxnGRanges(sesameData_check_genome("hg38", 
+    "EPIC")))
+```
+This part works. 
+```{r}
+  probes <- sesameData_getManifestGRanges("EPIC", genome = "hg38")
+```
+And this part. Good. If I can get probes including location and associate them back to beta values, I can look at any association I might want.
+Out of curiousity can I grab V2?
+```{r}
+  probes2 <- sesameData_getManifestGRanges("EPICv2", genome = "hg38")
+```
+I can :) Looks like the names are in there, too, associated with the IRanges column.
+But don't get distracted. Don't want to reinvent the wheel, so how much comparison can I do with what sesame has already given me?
+```{r}
+probes3 <- probes[names(probes) %in% query]
+```
+Yeah... It's query that's the issue. If query = NULL it's supposed to use all the probes for the platform, but it's not doing that. OTOH I shouldn't actually need those lines if query = NULL because it shouldn't need to subset, no? (if query is specific is it still broken, or is it only the NULL processing that's broken?)
+
+So this line, which should give me all genes with nearby probes, should still work.
+```{r}
+ssbo <- subsetByOverlaps(genes, probes + 10000)
+```
+
+Hmm. Is minfi less buggy?
+```{r}
+library(GenomicRanges)
+```
+```{r}
+ssbo <- subsetByOverlaps(genes, probes + 10000)
+```
+
+There, that really should have been auto-loaded by sesame but I've got it now.
+54K after starting with 66k lol. Suprise suprise lots of genes have CpGs within 10kb of them. Now, are there built-in functions for matching betas back to genes, or do I need to do it? (Not hard, just use the CGI names and sample names as IDs.)
+
+Okay, they use gprofiler2 for the enrichment options. Base R package, not bioconductor. Comes in web browser format as well - hopefully there's some optimization for high-throughput work, usually web brower stuff favors low throughput data.
+
+No, really looks like that's optimized for single gene analysis. Useful to pick something to highlight things, but not a good broad scale tool. Overlap function doesn't attach scores either so I think it's time to take this out of the sesame ecosystem. So, let's save all these to tables, then run some overlaps. 
+
+```{r}
+betasdf$cgIDs <- rownames(betasdf)
+```
+```{r}
+tallbetasdf <- betasdf |> pivot_longer(cols = c(1:4), names_to = c("samp_id"), values_to = "betasc") |> filter(!is.na(betasc))
+```
+```{r}
+source("C://Users/kayle/Documents/Script repository/R scripting/Utility_Fns.R")
+```
+
+```{r}
+probesdf1 <- as.data.frame(probes)
+probesdf2 <- as.data.frame(probes2)
+```
+```{r}
+probesdf1$cgIDs <- rownames(probesdf1)
+probesdf2$cgIDs <- rownames(probesdf2)
+```
+
+```{r}
+write_genetsv(tallbetasdf, "DacMethylation_w_betas", coln = TRUE)
+write_genetsv(probesdf1, "probes850K_EPIC", coln = TRUE)
+write_genetsv(probesdf2, "probes950K_EPIC", coln = TRUE)
+```
+
+
