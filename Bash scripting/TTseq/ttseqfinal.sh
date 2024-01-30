@@ -111,7 +111,7 @@ done
 ######################
 # get scaling factor #
 ######################
-module load r
+module load r/4.2.1/b1
 Rscript --vanilla ttseq3scale.R
 
 mapfile -t scaleFactors < factors_tab.txt
